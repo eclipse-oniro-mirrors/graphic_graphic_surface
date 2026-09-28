@@ -154,6 +154,7 @@ private:
     int32_t surfaceBufferWidth_ = 0;
     int32_t surfaceBufferHeight_ = 0;
     mutable std::mutex mutex_;
+    mutable std::mutex reclaimMutex_;
     OH_NativeBuffer_Planes planesInfo_ = {0, {}};
     BufferRequestConfig bufferRequestConfig_ = {0, 0, 0, 0, 0, 0};
     bool isConsumerAttachBufferFlag_ = false;

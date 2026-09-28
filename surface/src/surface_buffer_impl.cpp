@@ -1013,19 +1013,27 @@ GSError SurfaceBufferImpl::TryReclaim()
         BLOGE("init memmgr members failed");
         return GSERROR_INVALID_ARGUMENTS;
     }
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (isReclaimed_.load()) {
-        return GSERROR_INVALID_OPERATING;
-    }
-    if (handle_ == nullptr) {
-        return GSERROR_INVALID_ARGUMENTS;
-    }
-    int32_t fd = handle_->fd;
-    if (fd < 0) {
-        return GSERROR_INVALID_ARGUMENTS;
+    std::lock_guard<std::mutex> lock(reclaimMutex_);
+    int32_t fd;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (isReclaimed_.load()) {
+            return GSERROR_INVALID_OPERATING;
+        }
+        if (handle_ == nullptr) {
+            return GSERROR_INVALID_ARGUMENTS;
+        }
+        fd = dup(handle_->fd);
+        if (fd < 0) {
+            return GSERROR_INVALID_ARGUMENTS;
+        }
     }
     int32_t ret = reclaimFunc_(ownPid_, fd);
-    isReclaimed_ = (ret == 0 ? true : false);
+    close(fd);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        isReclaimed_ = (ret == 0 ? true : false);
+    }
     return (ret == 0 ? GSERROR_OK : GSERROR_API_FAILED);
 }
 
@@ -1035,19 +1043,27 @@ GSError SurfaceBufferImpl::TryResumeIfNeeded()
         BLOGE("init memmgr members failed");
         return GSERROR_INVALID_ARGUMENTS;
     }
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!isReclaimed_.load()) {
-        return GSERROR_INVALID_OPERATING;
-    }
-    if (handle_ == nullptr) {
-        return GSERROR_INVALID_ARGUMENTS;
-    }
-    int32_t fd = handle_->fd;
-    if (fd < 0) {
-        return GSERROR_INVALID_ARGUMENTS;
+    std::lock_guard<std::mutex> lock(reclaimMutex_);
+    int32_t fd;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!isReclaimed_.load()) {
+            return GSERROR_INVALID_OPERATING;
+        }
+        if (handle_ == nullptr) {
+            return GSERROR_INVALID_ARGUMENTS;
+        }
+        fd = dup(handle_->fd);
+        if (fd < 0) {
+            return GSERROR_INVALID_ARGUMENTS;
+        }
     }
     int32_t ret = resumeFunc_(ownPid_, fd);
-    isReclaimed_ = (ret == 0 ? false : true);
+    close(fd);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        isReclaimed_ = (ret == 0 ? false : true);
+    }
     return (ret == 0 ? GSERROR_OK : GSERROR_API_FAILED);
 }
 
