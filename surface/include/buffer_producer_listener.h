@@ -68,7 +68,7 @@ public:
         if (fence != nullptr) {
             fence->WriteToMessageParcel(arguments);
         }
-        option.SetFlags(MessageOption::TF_ASYNC);
+        option.SetFlags(MessageOption::TF_ASYNC | MessageOption::TF_ASYNC_FORCE_TRANS);
         sptr<IRemoteObject> remote = Remote();
         if (remote == nullptr) {
             BLOGE("listener Remote is nullptr");
