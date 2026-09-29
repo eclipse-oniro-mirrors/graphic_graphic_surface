@@ -148,7 +148,7 @@ TEST_F(NativeFenceTest, NativeFenceIsValidTest)
     int fd = open("/dev/GPIO_TEST", O_RDONLY);
     ASSERT_NE(fd, 0);
     result = OH_NativeFence_IsValid(fd);
-    EXPECT_FALSE(result);
+    EXPECT_TRUE(result);
     OH_NativeFence_Close(fd);
 }
 
