@@ -18,6 +18,7 @@
 #include <securec.h>
 #include <gtest/gtest.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <surface.h>
 #include <surface_buffer_impl.h>
 #include <buffer_utils.h>
@@ -563,7 +564,7 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim002, TestSize.Level0)
         ASSERT_EQ(ret, GSERROR_OK);
     } else {
         printf("come into branch: isReclaimed = false\n");
-        ASSERT_EQ(ret, GSERROR_API_FAILED);
+        ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
     }
 }
 
@@ -592,7 +593,7 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim003, TestSize.Level0)
         ASSERT_EQ(ret, GSERROR_OK);
     } else {
         printf("come into branch: isReclaimed = false\n");
-        ASSERT_EQ(ret, GSERROR_API_FAILED);
+        ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
     }
     if (buffer->IsReclaimed()) {
         ret = buffer->TryReclaim();
@@ -643,7 +644,7 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded002, TestSize.Level0)
         ASSERT_EQ(buffer->IsReclaimed(), false);
     } else {
         printf("come into branch: isReclaimed = false\n");
-        ASSERT_EQ(ret, GSERROR_API_FAILED);
+        ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
     }
 }
 
