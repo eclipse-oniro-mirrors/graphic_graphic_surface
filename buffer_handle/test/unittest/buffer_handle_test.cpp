@@ -147,4 +147,128 @@ HWTEST_F(BufferHandleTest, ReadBufferHandle, Function | SmallTest | Level2)
 
     EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
 }
+
+// Serialize a handle with the given geometry and fd = -1 (validFd = false), so that
+// ReadBufferHandle exercises the geometry validation without needing a real fd.
+static void WriteGeometryParcel(MessageParcel &parcel, int32_t width, int32_t stride, int32_t height, int32_t size)
+{
+    BufferHandle *handle = AllocateBufferHandle(0, 0);
+    handle->width = width;
+    handle->stride = stride;
+    handle->height = height;
+    handle->size = size;
+    handle->format = 0;
+    handle->usage = 0;
+    handle->phyAddr = 0;
+    handle->fd = -1;
+    WriteBufferHandle(parcel, *handle);
+    FreeBufferHandle(handle);
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle rejects width <= 0
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleInvalidWidth, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 0, 4, 4, 100);
+    EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle rejects height <= 0
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleInvalidHeight, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, 4, 0, 100);
+    EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle rejects negative stride
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleNegativeStride, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, -1, 4, 100);
+    EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle rejects size <= 0
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleInvalidSize, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, 4, 4, 0);
+    EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle rejects height * stride larger than size
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleGeometryExceedsSize, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, 100, 100, 10);
+    EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle accepts stride == 0 as a valid boundary
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleZeroStrideValid, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, 0, 4, 100);
+    BufferHandle *handle = ReadBufferHandle(parcel);
+    ASSERT_NE(nullptr, handle);
+    ASSERT_EQ(0, handle->stride);
+    ASSERT_EQ(0, FreeBufferHandle(handle));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle accepts a fully valid geometry
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleValidGeometry, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, 4, 4, 100);
+    BufferHandle *handle = ReadBufferHandle(parcel);
+    ASSERT_NE(nullptr, handle);
+    ASSERT_EQ(4, handle->width);
+    ASSERT_EQ(4, handle->stride);
+    ASSERT_EQ(4, handle->height);
+    ASSERT_EQ(100, handle->size);
+    ASSERT_EQ(0, FreeBufferHandle(handle));
+}
 }
