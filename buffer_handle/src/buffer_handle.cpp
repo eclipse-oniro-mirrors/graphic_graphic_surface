@@ -141,10 +141,12 @@ BufferHandle *ReadBufferHandle(MessageParcel &parcel,
         return nullptr;
     }
 
-    // width/height/size must be positive and stride must be non-negative; cast to int64_t before
-    // multiply to avoid 32-bit overflow, since these fields come from untrusted cross-process
-    // input. A forged height * stride larger than size would drive downstream reads out of the buffer.
-    bool validGeometry = handle->width > 0 && handle->height > 0 && handle->stride >= 0 && handle->size > 0 &&
+    // width/height/size must be positive and stride must be at least width (a row pitch cannot be
+    // narrower than the image width); cast to int64_t before multiply to avoid 32-bit overflow,
+    // since these fields come from untrusted cross-process input. A forged height * stride larger
+    // than size would drive downstream reads out of the buffer.
+    bool validGeometry = handle->width > 0 && handle->height > 0 && handle->size > 0 &&
+        handle->stride >= handle->width &&
         static_cast<int64_t>(handle->height) * static_cast<int64_t>(handle->stride) <=
         static_cast<int64_t>(handle->size);
     if (!validGeometry) {

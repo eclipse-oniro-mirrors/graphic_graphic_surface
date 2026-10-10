@@ -240,16 +240,13 @@ HWTEST_F(BufferHandleTest, ReadBufferHandleGeometryExceedsSize, Function | Small
 * Type: Function
 * Rank: Important(2)
 * EnvConditions: N/A
-* CaseDescription: ReadBufferHandle accepts stride == 0 as a valid boundary
+* CaseDescription: ReadBufferHandle rejects stride == 0 (narrower than a positive width)
 */
-HWTEST_F(BufferHandleTest, ReadBufferHandleZeroStrideValid, Function | SmallTest | Level2)
+HWTEST_F(BufferHandleTest, ReadBufferHandleZeroStrideInvalid, Function | SmallTest | Level2)
 {
     MessageParcel parcel;
     WriteGeometryParcel(parcel, 4, 0, 4, 100);
-    BufferHandle *handle = ReadBufferHandle(parcel);
-    ASSERT_NE(nullptr, handle);
-    ASSERT_EQ(0, handle->stride);
-    ASSERT_EQ(0, FreeBufferHandle(handle));
+    EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
 }
 
 /*
@@ -257,7 +254,21 @@ HWTEST_F(BufferHandleTest, ReadBufferHandleZeroStrideValid, Function | SmallTest
 * Type: Function
 * Rank: Important(2)
 * EnvConditions: N/A
-* CaseDescription: ReadBufferHandle accepts a fully valid geometry
+* CaseDescription: ReadBufferHandle rejects non-negative stride smaller than width
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleStrideLessThanWidth, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, 2, 4, 100);
+    EXPECT_EQ(nullptr, ReadBufferHandle(parcel));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle accepts stride == width as a valid boundary
 */
 HWTEST_F(BufferHandleTest, ReadBufferHandleValidGeometry, Function | SmallTest | Level2)
 {
@@ -269,6 +280,23 @@ HWTEST_F(BufferHandleTest, ReadBufferHandleValidGeometry, Function | SmallTest |
     ASSERT_EQ(4, handle->stride);
     ASSERT_EQ(4, handle->height);
     ASSERT_EQ(100, handle->size);
+    ASSERT_EQ(0, FreeBufferHandle(handle));
+}
+
+/*
+* Function: BufferHandleTest
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle accepts stride greater than width
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleStrideGreaterThanWidthValid, Function | SmallTest | Level2)
+{
+    MessageParcel parcel;
+    WriteGeometryParcel(parcel, 4, 8, 4, 100);
+    BufferHandle *handle = ReadBufferHandle(parcel);
+    ASSERT_NE(nullptr, handle);
+    ASSERT_EQ(8, handle->stride);
     ASSERT_EQ(0, FreeBufferHandle(handle));
 }
 }
