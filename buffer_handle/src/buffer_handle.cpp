@@ -152,6 +152,7 @@ BufferHandle *ReadBufferHandle(MessageParcel &parcel,
     if (!validGeometry) {
         UTILS_LOGE("%{public}s invalid geometry: w=%{public}d h=%{public}d stride=%{public}d size=%{public}d",
             __func__, handle->width, handle->height, handle->stride, handle->size);
+        abort();
         FreeBufferHandle(handle);
         return nullptr;
     }
