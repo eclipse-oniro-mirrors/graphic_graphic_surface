@@ -141,6 +141,21 @@ BufferHandle *ReadBufferHandle(MessageParcel &parcel,
         return nullptr;
     }
 
+    // width/height/size must be positive and stride must be at least width (a row pitch cannot be
+    // narrower than the image width); cast to int64_t before multiply to avoid 32-bit overflow,
+    // since these fields come from untrusted cross-process input. A forged height * stride larger
+    // than size would drive downstream reads out of the buffer.
+    bool validGeometry = handle->width > 0 && handle->height > 0 && handle->size > 0 &&
+        handle->stride >= handle->width &&
+        static_cast<int64_t>(handle->height) * static_cast<int64_t>(handle->stride) <=
+        static_cast<int64_t>(handle->size);
+    if (!validGeometry) {
+        UTILS_LOGE("%{public}s invalid geometry: w=%{public}d h=%{public}d stride=%{public}d size=%{public}d",
+            __func__, handle->width, handle->height, handle->stride, handle->size);
+        FreeBufferHandle(handle);
+        return nullptr;
+    }
+
     bool validFd = false;
     if (!parcel.ReadBool(validFd)) {
         UTILS_LOGE("%{public}s ReadBool validFd failed", __func__);
@@ -158,16 +173,6 @@ BufferHandle *ReadBufferHandle(MessageParcel &parcel,
         if (handle->fd == -1) {
             UTILS_LOGE("%{public}s ReadFileDescriptor fd failed, is use readSafeFdFunc:%d",
                 __func__, readSafeFdFunc != nullptr);
-            FreeBufferHandle(handle);
-            return nullptr;
-        }
-        // Claimed size must not exceed the real length of the fd, otherwise a forged size may
-        // drive downstream reads out of the actual buffer. lseek(SEEK_END) is used instead of
-        // fstat as it works for both dmabuf and memfd/ashmem without getattr permission.
-        off_t fdSize = lseek(handle->fd, 0, SEEK_END);
-        if (fdSize < 0 || static_cast<int64_t>(fdSize) < handle->size) {
-            UTILS_LOGE("%{public}s invalid size=%{public}d vs fd length=%{public}ld, fd=%{public}d",
-                __func__, handle->size, static_cast<long>(fdSize), handle->fd);
             FreeBufferHandle(handle);
             return nullptr;
         }
