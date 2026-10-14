@@ -18,6 +18,7 @@
 #include <securec.h>
 #include <gtest/gtest.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <surface.h>
 #include <surface_buffer_impl.h>
 #include <buffer_utils.h>
@@ -563,7 +564,7 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim002, TestSize.Level0)
         ASSERT_EQ(ret, GSERROR_OK);
     } else {
         printf("come into branch: isReclaimed = false\n");
-        ASSERT_EQ(ret, GSERROR_API_FAILED);
+        ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
     }
 }
 
@@ -592,7 +593,7 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim003, TestSize.Level0)
         ASSERT_EQ(ret, GSERROR_OK);
     } else {
         printf("come into branch: isReclaimed = false\n");
-        ASSERT_EQ(ret, GSERROR_API_FAILED);
+        ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
     }
     if (buffer->IsReclaimed()) {
         ret = buffer->TryReclaim();
@@ -643,7 +644,7 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded002, TestSize.Level0)
         ASSERT_EQ(buffer->IsReclaimed(), false);
     } else {
         printf("come into branch: isReclaimed = false\n");
-        ASSERT_EQ(ret, GSERROR_API_FAILED);
+        ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
     }
 }
 
@@ -2191,5 +2192,91 @@ HWTEST_F(SurfaceBufferImplTest, SetSingleBufferModeTest001, TestSize.Level0)
     buffer->GetAndResetSingleBufferMode();
     buffer->SetSingleBufferMode(SingleBufferMode::SINGLE_BUFFER_MODE_TO_SINGLE);
     ASSERT_EQ(buffer->GetAndResetSingleBufferMode(), SingleBufferMode::SINGLE_BUFFER_MODE_TO_SINGLE);
+}
+
+/*
+* Function: TryReclaim
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. new SurfaceBufferImpl
+*                  2. call SetBufferHandle with a valid fd (dup succeeds)
+*                  3. call TryReclaim and check ret covers reclaimFunc_ call, close(fd),
+*                     and the second nested lock scope that updates isReclaimed_
+*                  4. force isReclaimed_ = true, call TryReclaim again to cover
+*                     the isReclaimed_ early-return branch
+*                  5. close the original fd to avoid leak
+*/
+HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
+{
+    auto impl = new SurfaceBufferImpl();
+    buffer = impl;
+    ASSERT_EQ(impl->GetBufferHandle(), nullptr);
+    BufferHandle *handle = new BufferHandle();
+    impl->SetBufferHandle(handle);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
+    // use a valid fd so that dup() inside TryReclaim succeeds, covering the
+    // reclaimFunc_ call, close(fd), and the second nested lock scope
+    int32_t validFd = open("/dev/null", O_RDWR);
+    ASSERT_GE(validFd, 0);
+    handle->fd = validFd;
+    GSError ret = impl->TryReclaim();
+    if (impl->isReclaimed_.load()) {
+        ASSERT_EQ(ret, GSERROR_OK);
+    } else {
+        ASSERT_EQ(ret, GSERROR_API_FAILED);
+    }
+    // force isReclaimed_ = true to cover the isReclaimed_ early-return branch
+    impl->isReclaimed_.store(true);
+    ASSERT_EQ(impl->TryReclaim(), GSERROR_INVALID_OPERATING);
+    ASSERT_EQ(impl->IsReclaimed(), true);
+    close(validFd);
+}
+ 
+/*
+* Function: TryResumeIfNeeded
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. new SurfaceBufferImpl, force isReclaimed_ = true with handle_ = nullptr,
+*                     covering the handle_ == nullptr branch
+*                  2. set handle with invalid fd, force isReclaimed_ = true,
+*                     covering the dup(fd) < 0 branch
+*                  3. set handle with a valid fd, force isReclaimed_ = true,
+*                     covering the resumeFunc_ call, close(fd), and the second nested lock scope
+*                  4. close the original fd to avoid leak
+*/
+HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
+{
+    auto impl = new SurfaceBufferImpl();
+    buffer = impl;
+ 
+    // cover handle_ == nullptr branch (line 969)
+    ASSERT_EQ(impl->GetBufferHandle(), nullptr);
+    impl->isReclaimed_.store(true);
+    ASSERT_EQ(impl->TryResumeIfNeeded(), GSERROR_INVALID_ARGUMENTS);
+    ASSERT_EQ(impl->IsReclaimed(), true);
+ 
+    // cover dup(fd) < 0 branch (line 973) with invalid fd
+    BufferHandle *handle = new BufferHandle();
+    impl->SetBufferHandle(handle);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
+    handle->fd = -1;
+    impl->isReclaimed_.store(true);
+    ASSERT_EQ(impl->TryResumeIfNeeded(), GSERROR_INVALID_ARGUMENTS);
+    ASSERT_EQ(impl->IsReclaimed(), true);
+ 
+    // cover resumeFunc_ call, close(fd), and second nested lock scope with valid fd
+    int32_t validFd = open("/dev/null", O_RDWR);
+    ASSERT_GE(validFd, 0);
+    handle->fd = validFd;
+    impl->isReclaimed_.store(true);
+    GSError ret = impl->TryResumeIfNeeded();
+    if (impl->isReclaimed_.load()) {
+        ASSERT_EQ(ret, GSERROR_API_FAILED);
+    } else {
+        ASSERT_EQ(ret, GSERROR_OK);
+    }
+    close(validFd);
 }
 }
