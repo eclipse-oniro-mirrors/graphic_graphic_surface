@@ -20,6 +20,15 @@
 #include "buffer_log.h"
 
 namespace OHOS {
+namespace {
+/* fdsan owner tag marking a tunnel fd owned by SurfaceTunnelHandle.
+ * 0xD001401 is the surface LOG_DOMAIN; owner type 4 (1/2/3 are taken by
+ * LPP_FD_CLIENT/LPP_FD_SERVICE/BUFFER_HANDLE_FD_OWNER_TAG).
+ */
+static constexpr uint64_t TUNNEL_HANDLE_FD =
+    (static_cast<uint64_t>(LOG_DOMAIN) << 32 | 4);
+} // namespace
+
 GraphicExtDataHandle *AllocExtDataHandle(uint32_t reserveInts)
 {
     if (static_cast<size_t>(reserveInts) > (SIZE_MAX - sizeof(GraphicExtDataHandle)) / sizeof(int32_t)) {
@@ -53,7 +62,7 @@ void FreeExtDataHandle(GraphicExtDataHandle *handle)
         return;
     }
     if (handle->fd >= 0) {
-        close(handle->fd);
+        fdsan_close_with_tag(handle->fd, TUNNEL_HANDLE_FD);
         handle->fd = -1;
     }
     free(handle);
@@ -92,6 +101,7 @@ GSError SurfaceTunnelHandle::SetHandle(const GraphicExtDataHandle *handle)
             tunnelHandle_ = nullptr;
             return GSERROR_INVALID_OPERATING;
         }
+        fdsan_exchange_owner_tag(tunnelHandle_->fd, 0, TUNNEL_HANDLE_FD);
     }
     for (uint32_t index = 0; index < handle->reserveInts; index++) {
         tunnelHandle_->reserve[index] = handle->reserve[index];

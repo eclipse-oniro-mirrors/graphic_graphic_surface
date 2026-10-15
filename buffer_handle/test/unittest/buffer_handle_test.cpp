@@ -14,7 +14,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <fcntl.h>
 #include <hilog/log.h>
+#include <unistd.h>
 #include "buffer_handle.h"
 
 #include "buffer_handle_utils.h"
@@ -284,11 +286,11 @@ HWTEST_F(BufferHandleTest, ReadBufferHandleValidGeometry, Function | SmallTest |
 }
 
 /*
-* Function: BufferHandleTest
+* Function: OHOS::ReadBufferHandle
 * Type: Function
 * Rank: Important(2)
 * EnvConditions: N/A
-* CaseDescription: ReadBufferHandle accepts stride greater than width
+* CaseDescription: OHOS::ReadBufferHandle accepts stride greater than width
 */
 HWTEST_F(BufferHandleTest, ReadBufferHandleStrideGreaterThanWidthValid, Function | SmallTest | Level2)
 {
@@ -298,5 +300,84 @@ HWTEST_F(BufferHandleTest, ReadBufferHandleStrideGreaterThanWidthValid, Function
     ASSERT_NE(nullptr, handle);
     ASSERT_EQ(8, handle->stride);
     ASSERT_EQ(0, FreeBufferHandle(handle));
+}
+
+/*
+* Function: FreeBufferHandle
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: FreeBufferHandle closes an unowned fd (tag 0) exactly like close():
+*                  1. open a real fd with tag 0
+*                  2. put it into a BufferHandle and free it
+*                  3. the fd must be closed (EBADF) with no fdsan owner mismatch
+*/
+HWTEST_F(BufferHandleTest, FreeBufferHandleClosesUnownedFd, Function | SmallTest | Level2)
+{
+    int32_t fd = open("/dev/null", O_RDWR);
+    ASSERT_GE(fd, 0);
+    BufferHandle *handle = AllocateBufferHandle(0, 0);
+    ASSERT_NE(nullptr, handle);
+    handle->fd = fd;
+    ASSERT_EQ(0, FreeBufferHandle(handle));
+    EXPECT_EQ(-1, fcntl(fd, F_GETFD));
+    EXPECT_EQ(EBADF, errno);
+}
+
+/*
+* Function: FreeBufferHandle
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: FreeBufferHandle validates and closes a fd tagged BUFFER_HANDLE_FD_OWNER_TAG:
+*                  1. open a real fd and tag it BUFFER_HANDLE_FD_OWNER_TAG
+*                  2. free the handle; owner check must pass and fd must be closed
+*/
+HWTEST_F(BufferHandleTest, FreeBufferHandleClosesOwnerTaggedFd, Function | SmallTest | Level2)
+{
+    int32_t fd = open("/dev/null", O_RDWR);
+    ASSERT_GE(fd, 0);
+    fdsan_exchange_owner_tag(fd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
+    BufferHandle *handle = AllocateBufferHandle(0, 0);
+    ASSERT_NE(nullptr, handle);
+    handle->fd = fd;
+    ASSERT_EQ(0, FreeBufferHandle(handle));
+    EXPECT_EQ(-1, fcntl(fd, F_GETFD));
+    EXPECT_EQ(EBADF, errno);
+}
+
+/*
+* Function: OHOS::ReadBufferHandle
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: ReadBufferHandle is source neutral, it must not tag the fd:
+*                  1. write a handle carrying a real fd (tag 0)
+*                  2. read it back; WriteFileDescriptor/ReadFileDescriptor each dup once,
+*                     so the fd read out is fresh and must stay unowned
+*                  3. both handles free their own fds independently
+*/
+HWTEST_F(BufferHandleTest, ReadBufferHandleLeavesFdUnowned, Function | SmallTest | Level2)
+{
+    int32_t fd = open("/dev/null", O_RDWR);
+    ASSERT_GE(fd, 0);
+    BufferHandle *src = AllocateBufferHandle(0, 0);
+    ASSERT_NE(nullptr, src);
+    src->width = 4;
+    src->stride = 4;
+    src->height = 4;
+    src->size = 100;
+    src->fd = fd;
+
+    MessageParcel parcel;
+    ASSERT_EQ(true, WriteBufferHandle(parcel, *src));
+    BufferHandle *dst = ReadBufferHandle(parcel);
+    ASSERT_NE(nullptr, dst);
+    EXPECT_NE(dst->fd, fd); // parcel fd transfer dups, never reuses the source fd
+    EXPECT_EQ(0u, fdsan_get_owner_tag(dst->fd)); // ReadBufferHandle must not tag
+    ASSERT_EQ(0, FreeBufferHandle(dst));
+    ASSERT_EQ(0, FreeBufferHandle(src));
+    EXPECT_EQ(-1, fcntl(fd, F_GETFD));
+    EXPECT_EQ(EBADF, errno);
 }
 }

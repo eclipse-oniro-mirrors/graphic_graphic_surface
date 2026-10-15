@@ -23,6 +23,7 @@
 #include <parameters.h>
 #include <securec.h>
 #include <sys/mman.h>
+#include "buffer_handle_utils.h"
 #include "buffer_log.h"
 #include "buffer_extra_data_impl.h"
 #include "surface_trace.h"
@@ -296,6 +297,7 @@ GSError SurfaceBufferImpl::Alloc(const BufferRequestConfig& config, const sptr<S
         dRet = displayBuffer->AllocMem(info, handle_);
     }
     if (dRet == GRAPHIC_DISPLAY_SUCCESS && handle_ != nullptr) {
+        fdsan_exchange_owner_tag(handle_->fd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
         dRet = displayBuffer->RegisterBuffer(*handle_);
         if (dRet != GRAPHIC_DISPLAY_SUCCESS && dRet != GRAPHIC_DISPLAY_NOT_SUPPORT) {
             BLOGE("AllocMem RegisterBuffer Failed with %{public}d", dRet);
@@ -433,6 +435,7 @@ void SurfaceBufferImpl::FreeBufferHandleLocked()
             displayBuffer->Unmap(*handle_);
             handle_->virAddr = nullptr;
         }
+        fdsan_exchange_owner_tag(handle_->fd, BUFFER_HANDLE_FD_OWNER_TAG, 0);
         displayBuffer->FreeMem(*handle_);
         handle_ = nullptr;
     }
@@ -634,6 +637,9 @@ void SurfaceBufferImpl::SetBufferHandle(BufferHandle* handle)
     FreeBufferHandleLocked();
 
     handle_ = handle;
+    if (handle_->fd >= 0) {
+        fdsan_exchange_owner_tag(handle_->fd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
+    }
     IDisplayBufferSptr displayBuffer = GetDisplayBuffer();
     if (displayBuffer == nullptr) {
         return;
