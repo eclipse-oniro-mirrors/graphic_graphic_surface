@@ -1,0 +1,22 @@
+# Copyright (c) 2026 Huawei Device Co., Ltd.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# libbuffer_handle.z.so 符号导出表。
+# （AllocateBufferHandle/FreeBufferHandle/ReadBufferHandle/WriteBufferHandle、
+# __cfi_check、_init/_fini），无可隐藏的内部符号，故不隐藏任何符号。
+# 本文件作为符号管控接入点保留：后续若新增内部实现符号需要隐藏，
+# 在 local 段按精确清单维护；新增公开 API 无需修改本文件。
+{
+  global:
+    *;
+};
