@@ -23,8 +23,8 @@ namespace OHOS {
 namespace Rosen {
 
 using InitFunc = void(*)();
-using SendFenceIdFunc = void(*)(uint32_t);
-using MonitorGpuStartFunc = void(*)(uint32_t);
+using SendFenceIdFunc = void(*)(int);
+using MonitorGpuStartFunc = void(*)(int);
 using MonitorGpuEndFunc = void(*)();
 using SetFrameParamFunc = void(*)(int, int, int, int);
 using IsScbSceneFunc = bool(*)();
