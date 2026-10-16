@@ -47,6 +47,10 @@ ohos_shared_library("buffer_handle") {
     "ipc:ipc_single",
   ]
 
+  if (current_os == "ohos") {
+    version_script = "libbuffer_handle.versionscript"
+  }
+
   innerapi_tags = [
     "chipsetsdk_sp",
     "platformsdk",

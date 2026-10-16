@@ -87,6 +87,10 @@ ohos_shared_library("surface") {
     "libnative_window.so",
   ]
 
+  if (current_os == "ohos") {
+    version_script = "libsurface.versionscript"
+  }
+
   innerapi_tags = [
     "chipsetsdk_sp",
     "platformsdk",
