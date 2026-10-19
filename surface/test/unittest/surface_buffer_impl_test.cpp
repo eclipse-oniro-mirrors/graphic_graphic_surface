@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <surface.h>
 #include <surface_buffer_impl.h>
+#include <buffer_handle_utils.h>
 #include <buffer_utils.h>
 #include <metadata_helper.h>
 #include "v1_1/buffer_handle_meta_key_type.h"
@@ -260,6 +261,83 @@ HWTEST_F(SurfaceBufferImplTest, Parcel001, TestSize.Level0)
     uint32_t seq;
     ReadSurfaceBufferImpl(parcel, seq, buffer);
     ASSERT_NE(buffer, nullptr);
+}
+
+/*
+ * Function: SetBufferHandle
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. new SurfaceBufferImpl and hand over a handle with a real fd
+ *                  2. the fd must be tagged BUFFER_HANDLE_FD_OWNER_TAG by the hand-over
+ *                  3. handing over a second handle releases the first one with the tag,
+ *                     the first fd must be closed
+ */
+HWTEST_F(SurfaceBufferImplTest, SetBufferHandleTagsFd, TestSize.Level0)
+{
+    auto impl = new SurfaceBufferImpl();
+    ASSERT_EQ(impl->GetBufferHandle(), nullptr);
+    int32_t fd = open("/dev/null", O_RDWR);
+    ASSERT_GE(fd, 0);
+
+    BufferHandle *handle = new BufferHandle();
+    handle->fd = fd;
+    impl->SetBufferHandle(handle);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
+    EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(fd));
+
+    // hand over a second handle to trigger release of the first one
+    BufferHandle *handle2 = new BufferHandle();
+    handle2->fd = -1;
+    impl->SetBufferHandle(handle2);
+    EXPECT_EQ(-1, fcntl(fd, F_GETFD));
+    EXPECT_EQ(EBADF, errno);
+}
+
+/*
+ * Function: Alloc
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. new SurfaceBufferImpl and Alloc
+ *                  2. the fd allocated by HDI must be tagged BUFFER_HANDLE_FD_OWNER_TAG
+ */
+HWTEST_F(SurfaceBufferImplTest, AllocTagsBufferHandleFd, TestSize.Level0)
+{
+    auto impl = new SurfaceBufferImpl();
+    auto sret = impl->Alloc(requestConfig);
+    ASSERT_EQ(sret, OHOS::GSERROR_OK);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
+    EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(impl->GetBufferHandle()->fd));
+}
+
+/*
+ * Function: ReadFromMessageParcel
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. Alloc a buffer and write it into a parcel
+ *                  2. read it back into a new SurfaceBufferImpl
+ *                  3. the fd is dup'ed twice by the parcel layer and read out unowned,
+ *                     SetBufferHandle must tag it BUFFER_HANDLE_FD_OWNER_TAG
+ */
+HWTEST_F(SurfaceBufferImplTest, ReadFromMessageParcelTagsFd, TestSize.Level0)
+{
+    sptr<SurfaceBuffer> src = new SurfaceBufferImpl(0);
+    auto sret = src->Alloc(requestConfig);
+    ASSERT_EQ(sret, OHOS::GSERROR_OK);
+    EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(src->GetBufferHandle()->fd));
+
+    MessageParcel parcel;
+    ASSERT_EQ(GSERROR_OK, WriteSurfaceBufferImpl(parcel, src->GetSeqNum(), src));
+
+    sptr<SurfaceBuffer> dst = nullptr;
+    uint32_t seq;
+    ASSERT_EQ(GSERROR_OK, ReadSurfaceBufferImpl(parcel, seq, dst));
+    ASSERT_NE(dst, nullptr);
+    ASSERT_NE(dst->GetBufferHandle(), nullptr);
+    EXPECT_NE(dst->GetBufferHandle()->fd, src->GetBufferHandle()->fd); // parcel fd transfer dups
+    EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(dst->GetBufferHandle()->fd));
 }
 
 /*
@@ -542,22 +620,25 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim001, TestSize.Level0)
 * Rank: Important(2)
 * EnvConditions: N/A
 * CaseDescription: 1. new SurfaceBufferImpl
-*                  2. call SetBufferHandle and check buffer handle
-*                  3. set fd of handle to -1
-*                  4. call TryReclaim and check ret
-*                  5. set fd of handle to 123
-*                  6. call TryReclaim and check ret
+*                  2. call SetBufferHandle with fd set to -1 before hand-over
+*                  3. call TryReclaim and check ret
+*                  4. hand over a second handle with fd 123 and call TryReclaim
  */
 HWTEST_F(SurfaceBufferImplTest, TryReclaim002, TestSize.Level0)
 {
     buffer = new SurfaceBufferImpl();
     ASSERT_EQ(buffer->GetBufferHandle(), nullptr);
     BufferHandle *handle = new BufferHandle();
+    handle->fd = -1;
     buffer->SetBufferHandle(handle);
     ASSERT_NE(buffer->GetBufferHandle(), nullptr);
-    handle->fd = -1;
     ASSERT_EQ(buffer->TryReclaim(), GSERROR_INVALID_ARGUMENTS);
-    handle->fd = 123;
+
+    // fd must be set before SetBufferHandle: once handed over, the fd belongs
+    // to SurfaceBufferImpl and is covered by fdsan owner tag management
+    BufferHandle *handle2 = new BufferHandle();
+    handle2->fd = 123;
+    buffer->SetBufferHandle(handle2);
     GSError ret = buffer->TryReclaim();
     if (buffer->IsReclaimed()) {
         printf("come into branch: isReclaimed = true\n");
@@ -584,9 +665,9 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim003, TestSize.Level0)
     buffer = new SurfaceBufferImpl();
     ASSERT_EQ(buffer->GetBufferHandle(), nullptr);
     BufferHandle *handle = new BufferHandle();
+    handle->fd = 123;
     buffer->SetBufferHandle(handle);
     ASSERT_NE(buffer->GetBufferHandle(), nullptr);
-    handle->fd = 123;
     GSError ret = buffer->TryReclaim();
     if (buffer->IsReclaimed()) {
         printf("come into branch: isReclaimed = true\n");
@@ -633,9 +714,9 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded002, TestSize.Level0)
     buffer = new SurfaceBufferImpl();
     ASSERT_EQ(buffer->GetBufferHandle(), nullptr);
     BufferHandle *handle = new BufferHandle();
+    handle->fd = 123;
     buffer->SetBufferHandle(handle);
     ASSERT_NE(buffer->GetBufferHandle(), nullptr);
-    handle->fd = 123;
     GSError ret = buffer->TryReclaim();
     if (buffer->IsReclaimed()) {
         printf("come into branch: isReclaimed = true\n");
@@ -769,9 +850,9 @@ HWTEST_F(SurfaceBufferImplTest, CloneBufferHandle002, TestSize.Level0)
     buffer = new SurfaceBufferImpl();
     ASSERT_EQ(buffer->GetBufferHandle(), nullptr);
     BufferHandle *handle = new BufferHandle();
+    handle->fd = -1;
     buffer->SetBufferHandle(handle);
     ASSERT_NE(buffer->GetBufferHandle(), nullptr);
-    handle->fd = -1;
     BufferHandle* bufferHandle = buffer->CloneBufferHandle(buffer->GetBufferHandle());
     ASSERT_EQ(bufferHandle, nullptr);
 }
@@ -2212,14 +2293,16 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
     auto impl = new SurfaceBufferImpl();
     buffer = impl;
     ASSERT_EQ(impl->GetBufferHandle(), nullptr);
-    BufferHandle *handle = new BufferHandle();
-    impl->SetBufferHandle(handle);
-    ASSERT_NE(impl->GetBufferHandle(), nullptr);
     // use a valid fd so that dup() inside TryReclaim succeeds, covering the
     // reclaimFunc_ call, close(fd), and the second nested lock scope
     int32_t validFd = open("/dev/null", O_RDWR);
     ASSERT_GE(validFd, 0);
+    BufferHandle *handle = new BufferHandle();
     handle->fd = validFd;
+    // fd is set before hand-over; SurfaceBufferImpl then owns it and closes it
+    // (with owner tag) on destruction, no manual close below
+    impl->SetBufferHandle(handle);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
     GSError ret = impl->TryReclaim();
     if (impl->isReclaimed_.load()) {
         ASSERT_EQ(ret, GSERROR_OK);
@@ -2230,7 +2313,6 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
     impl->isReclaimed_.store(true);
     ASSERT_EQ(impl->TryReclaim(), GSERROR_INVALID_OPERATING);
     ASSERT_EQ(impl->IsReclaimed(), true);
-    close(validFd);
 }
  
 /*
@@ -2244,32 +2326,35 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
 *                     covering the dup(fd) < 0 branch
 *                  3. set handle with a valid fd, force isReclaimed_ = true,
 *                     covering the resumeFunc_ call, close(fd), and the second nested lock scope
-*                  4. close the original fd to avoid leak
 */
 HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
 {
     auto impl = new SurfaceBufferImpl();
     buffer = impl;
- 
+
     // cover handle_ == nullptr branch (line 969)
     ASSERT_EQ(impl->GetBufferHandle(), nullptr);
     impl->isReclaimed_.store(true);
     ASSERT_EQ(impl->TryResumeIfNeeded(), GSERROR_INVALID_ARGUMENTS);
     ASSERT_EQ(impl->IsReclaimed(), true);
- 
-    // cover dup(fd) < 0 branch (line 973) with invalid fd
+
+    // cover dup(fd) < 0 branch (line 973) with invalid fd;
+    // fd is set before hand-over, after SetBufferHandle it belongs to impl
     BufferHandle *handle = new BufferHandle();
+    handle->fd = -1;
     impl->SetBufferHandle(handle);
     ASSERT_NE(impl->GetBufferHandle(), nullptr);
-    handle->fd = -1;
     impl->isReclaimed_.store(true);
     ASSERT_EQ(impl->TryResumeIfNeeded(), GSERROR_INVALID_ARGUMENTS);
     ASSERT_EQ(impl->IsReclaimed(), true);
- 
-    // cover resumeFunc_ call, close(fd), and second nested lock scope with valid fd
+
+    // cover resumeFunc_ call, close(fd), and second nested lock scope with valid fd;
+    // impl releases the previous handle and takes over the valid fd, closed on destruction
     int32_t validFd = open("/dev/null", O_RDWR);
     ASSERT_GE(validFd, 0);
-    handle->fd = validFd;
+    BufferHandle *handle2 = new BufferHandle();
+    handle2->fd = validFd;
+    impl->SetBufferHandle(handle2);
     impl->isReclaimed_.store(true);
     GSError ret = impl->TryResumeIfNeeded();
     if (impl->isReclaimed_.load()) {
@@ -2277,6 +2362,5 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
     } else {
         ASSERT_EQ(ret, GSERROR_OK);
     }
-    close(validFd);
 }
 }

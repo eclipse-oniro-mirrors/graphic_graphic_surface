@@ -68,7 +68,7 @@ int32_t FreeBufferHandle(BufferHandle *handle)
         return 0;
     }
     if (handle->fd >= 0) {
-        close(handle->fd);
+        fdsan_close_with_tag(handle->fd, fdsan_get_owner_tag(handle->fd));
         handle->fd = -1;
     }
     const uint32_t reserveFds = handle->reserveFds;

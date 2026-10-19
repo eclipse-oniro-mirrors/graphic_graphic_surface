@@ -19,6 +19,12 @@
 #include <stdint.h>
 #include <buffer_handle.h>
 
+/* fdsan owner tag marking a BufferHandle fd owned by SurfaceBufferImpl.
+ * 0xD001401 is the surface LOG_DOMAIN; the low 32 bits are the owner type,
+ * where 1 and 2 are taken by LPP_FD_CLIENT and LPP_FD_SERVICE.
+ */
+#define BUFFER_HANDLE_FD_OWNER_TAG (((uint64_t)0xD001401 << 32) | 3)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
