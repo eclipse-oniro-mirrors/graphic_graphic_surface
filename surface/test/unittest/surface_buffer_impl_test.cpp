@@ -2289,7 +2289,7 @@ HWTEST_F(SurfaceBufferImplTest, SetSingleBufferModeTest001, TestSize.Level0)
 *                  5. close the original fd to avoid leak
 */
 HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
-{
+{ 
     auto impl = new SurfaceBufferImpl();
     buffer = impl;
     ASSERT_EQ(impl->GetBufferHandle(), nullptr);
@@ -2328,7 +2328,7 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
 *                     covering the resumeFunc_ call, close(fd), and the second nested lock scope
 */
 HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
-{
+{ 
     auto impl = new SurfaceBufferImpl();
     buffer = impl;
 
