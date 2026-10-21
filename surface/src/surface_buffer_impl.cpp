@@ -1033,9 +1033,10 @@ GSError SurfaceBufferImpl::TryReclaim()
         if (fd < 0) {
             return GSERROR_INVALID_ARGUMENTS;
         }
+        fdsan_exchange_owner_tag(fd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
     }
     int32_t ret = reclaimFunc_(ownPid_, fd);
-    close(fd);
+    fdsan_close_with_tag(fd, BUFFER_HANDLE_FD_OWNER_TAG);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         isReclaimed_ = (ret == 0 ? true : false);
@@ -1063,9 +1064,10 @@ GSError SurfaceBufferImpl::TryResumeIfNeeded()
         if (fd < 0) {
             return GSERROR_INVALID_ARGUMENTS;
         }
+        fdsan_exchange_owner_tag(fd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
     }
     int32_t ret = resumeFunc_(ownPid_, fd);
-    close(fd);
+    fdsan_close_with_tag(fd, BUFFER_HANDLE_FD_OWNER_TAG);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         isReclaimed_ = (ret == 0 ? false : true);

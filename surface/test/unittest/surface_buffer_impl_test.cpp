@@ -2293,14 +2293,11 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
     auto impl = new SurfaceBufferImpl();
     buffer = impl;
     ASSERT_EQ(impl->GetBufferHandle(), nullptr);
-    // use a valid fd so that dup() inside TryReclaim succeeds, covering the
-    // reclaimFunc_ call, close(fd), and the second nested lock scope
+    // open the fd first and set it on the handle before SetBufferHandle
     int32_t validFd = open("/dev/null", O_RDWR);
     ASSERT_GE(validFd, 0);
     BufferHandle *handle = new BufferHandle();
     handle->fd = validFd;
-    // fd is set before hand-over; SurfaceBufferImpl then owns it and closes it
-    // (with owner tag) on destruction, no manual close below
     impl->SetBufferHandle(handle);
     ASSERT_NE(impl->GetBufferHandle(), nullptr);
     GSError ret = impl->TryReclaim();
@@ -2313,6 +2310,11 @@ HWTEST_F(SurfaceBufferImplTest, TryReclaim004, TestSize.Level0)
     impl->isReclaimed_.store(true);
     ASSERT_EQ(impl->TryReclaim(), GSERROR_INVALID_OPERATING);
     ASSERT_EQ(impl->IsReclaimed(), true);
+
+    // hand over a second handle to trigger release of the first one
+    BufferHandle *handle2 = new BufferHandle();
+    handle2->fd = -1;
+    impl->SetBufferHandle(handle2);
 }
  
 /*
@@ -2338,8 +2340,8 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
     ASSERT_EQ(impl->TryResumeIfNeeded(), GSERROR_INVALID_ARGUMENTS);
     ASSERT_EQ(impl->IsReclaimed(), true);
 
-    // cover dup(fd) < 0 branch (line 973) with invalid fd;
-    // fd is set before hand-over, after SetBufferHandle it belongs to impl
+    // cover dup(fd) < 0 branch (line 973) with invalid fd. set fd before
+    // SetBufferHandle so the hand-over sees fd = -1 and skips fdsan tagging
     BufferHandle *handle = new BufferHandle();
     handle->fd = -1;
     impl->SetBufferHandle(handle);
@@ -2348,13 +2350,12 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
     ASSERT_EQ(impl->TryResumeIfNeeded(), GSERROR_INVALID_ARGUMENTS);
     ASSERT_EQ(impl->IsReclaimed(), true);
 
-    // cover resumeFunc_ call, close(fd), and second nested lock scope with valid fd;
-    // impl releases the previous handle and takes over the valid fd, closed on destruction
     int32_t validFd = open("/dev/null", O_RDWR);
     ASSERT_GE(validFd, 0);
-    BufferHandle *handle2 = new BufferHandle();
-    handle2->fd = validFd;
-    impl->SetBufferHandle(handle2);
+    BufferHandle *handleValid = new BufferHandle();
+    handleValid->fd = validFd;
+    impl->SetBufferHandle(handleValid);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
     impl->isReclaimed_.store(true);
     GSError ret = impl->TryResumeIfNeeded();
     if (impl->isReclaimed_.load()) {
@@ -2362,5 +2363,10 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
     } else {
         ASSERT_EQ(ret, GSERROR_OK);
     }
+
+    // hand over a second handle to trigger release of the first one
+    BufferHandle *handle2 = new BufferHandle();
+    handle2->fd = -1;
+    impl->SetBufferHandle(handle2);
 }
 }
