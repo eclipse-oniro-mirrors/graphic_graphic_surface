@@ -341,6 +341,127 @@ HWTEST_F(SurfaceBufferImplTest, ReadFromMessageParcelTagsFd, TestSize.Level0)
 }
 
 /*
+ * Function: SetBufferHandle
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. new SurfaceBufferImpl and hand over a handle with real reserve fds
+ *                  2. the reserve fds must be tagged BUFFER_HANDLE_FD_OWNER_TAG and stay valid,
+ *                     the fd numbers are still needed for release and parcel write
+ *                  3. handing over a second handle releases the first one with the tag,
+ *                     the reserve fds must be closed
+ */
+HWTEST_F(SurfaceBufferImplTest, SetBufferHandleTagsReserveFds, TestSize.Level0)
+{
+    auto impl = new SurfaceBufferImpl();
+    ASSERT_EQ(impl->GetBufferHandle(), nullptr);
+    constexpr uint32_t reserveFdCount = 2;
+    int32_t reserveFdArr[reserveFdCount] = {};
+    for (uint32_t i = 0; i < reserveFdCount; i++) {
+        reserveFdArr[i] = open("/dev/null", O_RDWR);
+        ASSERT_GE(reserveFdArr[i], 0);
+    }
+
+    BufferHandle *handle = AllocateBufferHandle(reserveFdCount, 0);
+    ASSERT_NE(handle, nullptr);
+    ASSERT_EQ(reserveFdCount, handle->reserveFds);
+    for (uint32_t i = 0; i < reserveFdCount; i++) {
+        handle->reserve[i] = reserveFdArr[i];
+    }
+    impl->SetBufferHandle(handle);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
+    ASSERT_EQ(reserveFdCount, impl->GetBufferHandle()->reserveFds);
+    for (uint32_t i = 0; i < reserveFdCount; i++) {
+        EXPECT_EQ(reserveFdArr[i], impl->GetBufferHandle()->reserve[i]);
+        EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(reserveFdArr[i]));
+    }
+
+    // hand over a second handle to trigger release of the first one
+    BufferHandle *handle2 = new BufferHandle();
+    handle2->fd = -1;
+    impl->SetBufferHandle(handle2);
+    ASSERT_NE(impl->GetBufferHandle(), nullptr);
+    for (uint32_t i = 0; i < reserveFdCount; i++) {
+        EXPECT_EQ(-1, fcntl(reserveFdArr[i], F_GETFD));
+        EXPECT_EQ(EBADF, errno);
+    }
+}
+
+/*
+ * Function: ReadFromMessageParcel
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. hand over a handle with a real fd and real reserve fds
+ *                  2. write it into a parcel and read it back into a new SurfaceBufferImpl
+ *                  3. the reserve fds are dup'ed by the parcel layer and read out unowned,
+ *                     SetBufferHandle must tag them BUFFER_HANDLE_FD_OWNER_TAG and keep them
+ *                     valid so the buffer can be written to a parcel again
+ */
+HWTEST_F(SurfaceBufferImplTest, ReadFromMessageParcelTagsReserveFds, TestSize.Level0)
+{
+    sptr<SurfaceBuffer> src = new SurfaceBufferImpl(0);
+    constexpr uint32_t reserveFdCount = 2;
+    int32_t reserveFdArr[reserveFdCount] = {};
+    for (uint32_t i = 0; i < reserveFdCount; i++) {
+        reserveFdArr[i] = open("/dev/null", O_RDWR);
+        ASSERT_GE(reserveFdArr[i], 0);
+    }
+    BufferHandle *handle = AllocateBufferHandle(reserveFdCount, 0);
+    ASSERT_NE(handle, nullptr);
+    ASSERT_EQ(reserveFdCount, handle->reserveFds);
+    handle->width = 4;
+    handle->stride = 4;
+    handle->height = 4;
+    handle->size = 100;
+    handle->fd = open("/dev/null", O_RDWR);
+    ASSERT_GE(handle->fd, 0);
+    for (uint32_t i = 0; i < reserveFdCount; i++) {
+        handle->reserve[i] = reserveFdArr[i];
+    }
+    src->SetBufferHandle(handle);
+    ASSERT_EQ(reserveFdCount, src->GetBufferHandle()->reserveFds);
+
+    MessageParcel parcel;
+    ASSERT_EQ(GSERROR_OK, WriteSurfaceBufferImpl(parcel, src->GetSeqNum(), src));
+
+    sptr<SurfaceBuffer> dst = nullptr;
+    uint32_t seq;
+    ASSERT_EQ(GSERROR_OK, ReadSurfaceBufferImpl(parcel, seq, dst));
+    ASSERT_NE(dst, nullptr);
+    ASSERT_NE(dst->GetBufferHandle(), nullptr);
+    ASSERT_EQ(reserveFdCount, dst->GetBufferHandle()->reserveFds);
+    for (uint32_t i = 0; i < reserveFdCount; i++) {
+        EXPECT_GE(dst->GetBufferHandle()->reserve[i], 0);
+        EXPECT_NE(dst->GetBufferHandle()->reserve[i], src->GetBufferHandle()->reserve[i]); // parcel fd transfer dups
+        EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(dst->GetBufferHandle()->reserve[i]));
+    }
+}
+
+/*
+ * Function: Alloc
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. new SurfaceBufferImpl and Alloc
+ *                  2. every fd of the handle allocated by HDI, the fd and the reserve fds,
+ *                     must be tagged BUFFER_HANDLE_FD_OWNER_TAG
+ */
+HWTEST_F(SurfaceBufferImplTest, AllocTagsReserveFds, TestSize.Level0)
+{
+    auto impl = new SurfaceBufferImpl();
+    auto sret = impl->Alloc(requestConfig);
+    ASSERT_EQ(sret, OHOS::GSERROR_OK);
+    BufferHandle *handle = impl->GetBufferHandle();
+    ASSERT_NE(handle, nullptr);
+    EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(handle->fd));
+    for (uint32_t i = 0; i < handle->reserveFds; i++) {
+        ASSERT_GE(handle->reserve[i], 0);
+        EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(handle->reserve[i]));
+    }
+}
+
+/*
 * Function: Create
 * Type: Function
 * Rank: Important(2)

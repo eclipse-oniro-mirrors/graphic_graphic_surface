@@ -74,7 +74,7 @@ int32_t FreeBufferHandle(BufferHandle *handle)
     const uint32_t reserveFds = handle->reserveFds;
     for (uint32_t i = 0; i < reserveFds; i++) {
         if (handle->reserve[i] >= 0) {
-            close(handle->reserve[i]);
+            fdsan_close_with_tag(handle->reserve[i], fdsan_get_owner_tag(handle->reserve[i]));
             handle->reserve[i] = -1;
         }
     }

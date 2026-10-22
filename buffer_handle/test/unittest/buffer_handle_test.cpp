@@ -347,6 +347,42 @@ HWTEST_F(BufferHandleTest, FreeBufferHandleClosesOwnerTaggedFd, Function | Small
 }
 
 /*
+* Function: FreeBufferHandle
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: FreeBufferHandle closes reserve fds whatever their owner tag:
+*                  1. allocate a handle with two reserve fds, one unowned and one tagged
+*                     BUFFER_HANDLE_FD_OWNER_TAG
+*                  2. free the handle; both reserve fds must be closed with no fdsan mismatch
+*/
+HWTEST_F(BufferHandleTest, FreeBufferHandleClosesReserveFds, Function | SmallTest | Level2)
+{
+    int32_t fd = open("/dev/null", O_RDWR);
+    ASSERT_GE(fd, 0);
+    int32_t unownedReserveFd = open("/dev/null", O_RDWR);
+    ASSERT_GE(unownedReserveFd, 0);
+    int32_t ownedReserveFd = open("/dev/null", O_RDWR);
+    ASSERT_GE(ownedReserveFd, 0);
+    fdsan_exchange_owner_tag(ownedReserveFd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
+
+    BufferHandle *handle = AllocateBufferHandle(2, 0);
+    ASSERT_NE(nullptr, handle);
+    ASSERT_EQ(2u, handle->reserveFds);
+    handle->fd = fd;
+    handle->reserve[0] = unownedReserveFd;
+    handle->reserve[1] = ownedReserveFd;
+    ASSERT_EQ(0, FreeBufferHandle(handle));
+
+    EXPECT_EQ(-1, fcntl(fd, F_GETFD));
+    EXPECT_EQ(EBADF, errno);
+    EXPECT_EQ(-1, fcntl(unownedReserveFd, F_GETFD));
+    EXPECT_EQ(EBADF, errno);
+    EXPECT_EQ(-1, fcntl(ownedReserveFd, F_GETFD));
+    EXPECT_EQ(EBADF, errno);
+}
+
+/*
 * Function: OHOS::ReadBufferHandle
 * Type: Function
 * Rank: Important(2)
