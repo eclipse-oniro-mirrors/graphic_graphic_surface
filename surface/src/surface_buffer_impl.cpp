@@ -298,6 +298,11 @@ GSError SurfaceBufferImpl::Alloc(const BufferRequestConfig& config, const sptr<S
     }
     if (dRet == GRAPHIC_DISPLAY_SUCCESS && handle_ != nullptr) {
         fdsan_exchange_owner_tag(handle_->fd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
+        for (uint32_t i = 0; i < handle_->reserveFds; i++) {
+            if (handle_->reserve[i] >= 0) {
+                fdsan_exchange_owner_tag(handle_->reserve[i], 0, BUFFER_HANDLE_FD_OWNER_TAG);
+            }
+        }
         dRet = displayBuffer->RegisterBuffer(*handle_);
         if (dRet != GRAPHIC_DISPLAY_SUCCESS && dRet != GRAPHIC_DISPLAY_NOT_SUPPORT) {
             BLOGE("AllocMem RegisterBuffer Failed with %{public}d", dRet);
@@ -436,6 +441,11 @@ void SurfaceBufferImpl::FreeBufferHandleLocked()
             handle_->virAddr = nullptr;
         }
         fdsan_exchange_owner_tag(handle_->fd, BUFFER_HANDLE_FD_OWNER_TAG, 0);
+        for (uint32_t i = 0; i < handle_->reserveFds; i++) {
+            if (handle_->reserve[i] >= 0) {
+                fdsan_exchange_owner_tag(handle_->reserve[i], BUFFER_HANDLE_FD_OWNER_TAG, 0);
+            }
+        }
         displayBuffer->FreeMem(*handle_);
         handle_ = nullptr;
     }
@@ -639,6 +649,11 @@ void SurfaceBufferImpl::SetBufferHandle(BufferHandle* handle)
     handle_ = handle;
     if (handle_->fd >= 0) {
         fdsan_exchange_owner_tag(handle_->fd, 0, BUFFER_HANDLE_FD_OWNER_TAG);
+    }
+    for (uint32_t i = 0; i < handle_->reserveFds; i++) {
+        if (handle_->reserve[i] >= 0) {
+            fdsan_exchange_owner_tag(handle_->reserve[i], 0, BUFFER_HANDLE_FD_OWNER_TAG);
+        }
     }
     IDisplayBufferSptr displayBuffer = GetDisplayBuffer();
     if (displayBuffer == nullptr) {
