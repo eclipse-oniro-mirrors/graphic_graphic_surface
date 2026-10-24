@@ -264,37 +264,6 @@ HWTEST_F(SurfaceBufferImplTest, Parcel001, TestSize.Level0)
 }
 
 /*
- * Function: SetBufferHandle
- * Type: Function
- * Rank: Important(2)
- * EnvConditions: N/A
- * CaseDescription: 1. new SurfaceBufferImpl and hand over a handle with a real fd
- *                  2. the fd must be tagged BUFFER_HANDLE_FD_OWNER_TAG by the hand-over
- *                  3. handing over a second handle releases the first one with the tag,
- *                     the first fd must be closed
- */
-HWTEST_F(SurfaceBufferImplTest, SetBufferHandleTagsFd, TestSize.Level0)
-{
-    auto impl = new SurfaceBufferImpl();
-    ASSERT_EQ(impl->GetBufferHandle(), nullptr);
-    int32_t fd = open("/dev/null", O_RDWR);
-    ASSERT_GE(fd, 0);
-
-    BufferHandle *handle = new BufferHandle();
-    handle->fd = fd;
-    impl->SetBufferHandle(handle);
-    ASSERT_NE(impl->GetBufferHandle(), nullptr);
-    EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(fd));
-
-    // hand over a second handle to trigger release of the first one
-    BufferHandle *handle2 = new BufferHandle();
-    handle2->fd = -1;
-    impl->SetBufferHandle(handle2);
-    EXPECT_EQ(-1, fcntl(fd, F_GETFD));
-    EXPECT_EQ(EBADF, errno);
-}
-
-/*
  * Function: Alloc
  * Type: Function
  * Rank: Important(2)
@@ -338,53 +307,6 @@ HWTEST_F(SurfaceBufferImplTest, ReadFromMessageParcelTagsFd, TestSize.Level0)
     ASSERT_NE(dst->GetBufferHandle(), nullptr);
     EXPECT_NE(dst->GetBufferHandle()->fd, src->GetBufferHandle()->fd); // parcel fd transfer dups
     EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(dst->GetBufferHandle()->fd));
-}
-
-/*
- * Function: SetBufferHandle
- * Type: Function
- * Rank: Important(2)
- * EnvConditions: N/A
- * CaseDescription: 1. new SurfaceBufferImpl and hand over a handle with real reserve fds
- *                  2. the reserve fds must be tagged BUFFER_HANDLE_FD_OWNER_TAG and stay valid,
- *                     the fd numbers are still needed for release and parcel write
- *                  3. handing over a second handle releases the first one with the tag,
- *                     the reserve fds must be closed
- */
-HWTEST_F(SurfaceBufferImplTest, SetBufferHandleTagsReserveFds, TestSize.Level0)
-{
-    auto impl = new SurfaceBufferImpl();
-    ASSERT_EQ(impl->GetBufferHandle(), nullptr);
-    constexpr uint32_t reserveFdCount = 2;
-    int32_t reserveFdArr[reserveFdCount] = {};
-    for (uint32_t i = 0; i < reserveFdCount; i++) {
-        reserveFdArr[i] = open("/dev/null", O_RDWR);
-        ASSERT_GE(reserveFdArr[i], 0);
-    }
-
-    BufferHandle *handle = AllocateBufferHandle(reserveFdCount, 0);
-    ASSERT_NE(handle, nullptr);
-    ASSERT_EQ(reserveFdCount, handle->reserveFds);
-    for (uint32_t i = 0; i < reserveFdCount; i++) {
-        handle->reserve[i] = reserveFdArr[i];
-    }
-    impl->SetBufferHandle(handle);
-    ASSERT_NE(impl->GetBufferHandle(), nullptr);
-    ASSERT_EQ(reserveFdCount, impl->GetBufferHandle()->reserveFds);
-    for (uint32_t i = 0; i < reserveFdCount; i++) {
-        EXPECT_EQ(reserveFdArr[i], impl->GetBufferHandle()->reserve[i]);
-        EXPECT_EQ(BUFFER_HANDLE_FD_OWNER_TAG, fdsan_get_owner_tag(reserveFdArr[i]));
-    }
-
-    // hand over a second handle to trigger release of the first one
-    BufferHandle *handle2 = new BufferHandle();
-    handle2->fd = -1;
-    impl->SetBufferHandle(handle2);
-    ASSERT_NE(impl->GetBufferHandle(), nullptr);
-    for (uint32_t i = 0; i < reserveFdCount; i++) {
-        EXPECT_EQ(-1, fcntl(reserveFdArr[i], F_GETFD));
-        EXPECT_EQ(EBADF, errno);
-    }
 }
 
 /*

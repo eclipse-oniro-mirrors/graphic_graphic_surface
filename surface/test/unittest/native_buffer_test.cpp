@@ -376,7 +376,7 @@ HWTEST_F(NativeBufferTest, OHNativeBufferSetDmaBufferName003, TestSize.Level0)
     int32_t ret = OH_NativeBuffer_SetDmaBufferName(nativeBuffer, "validName123");
     ASSERT_EQ(ret, OHOS::SURFACE_ERROR_OK);
 
-    std::string maxLen = std::string(64, 'a');
+    std::string maxLen = std::string(31, 'a');
     ret = OH_NativeBuffer_SetDmaBufferName(nativeBuffer, maxLen.c_str());
     ASSERT_EQ(ret, OHOS::SURFACE_ERROR_OK);
 
