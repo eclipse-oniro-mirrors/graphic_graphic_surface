@@ -32,7 +32,10 @@ ohos_fuzztest("SurfaceFuzzTest") {
     "-Wno-unused-variable",
     "-fno-omit-frame-pointer",
   ]
-  sources = [ "surface_fuzzer.cpp" ]
+  sources = [ 
+    "surface_fuzzer.cpp",
+    "delegator_mock_fuzzer.cpp",
+  ]
   deps = [
     "$graphic_surface_root/surface:surface",
     "$graphic_surface_root/sync_fence:sync_fence",
