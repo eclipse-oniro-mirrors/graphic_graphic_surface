@@ -615,6 +615,22 @@ GSError ConsumerSurface::SetSurfaceSourceType(OHSurfaceSource sourceType)
     return producer_->SetSurfaceSourceType(sourceType);
 }
 
+GSError ConsumerSurface::SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+{
+    if (producer_ == nullptr) {
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    return producer_->SetScreenInfo(currentFrameRect, originalRect, angle);
+}
+
+GSError ConsumerSurface::GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle)
+{
+    if (producer_ == nullptr) {
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    return producer_->GetScreenInfo(currentFrameRect, originalRect, angle);
+}
+
 OHSurfaceSource ConsumerSurface::GetSurfaceSourceType() const
 {
     if (producer_ == nullptr) {

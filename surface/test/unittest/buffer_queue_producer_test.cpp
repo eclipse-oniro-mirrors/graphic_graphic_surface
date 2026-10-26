@@ -1045,6 +1045,219 @@ HWTEST_F(BufferQueueProducerTest, SetWhitePointBrightness001, TestSize.Level0)
     EXPECT_EQ(ret, ERR_NONE);
 }
 
+static void WriteScreenInfoToParcel(MessageParcel &parcel, const std::vector<int32_t> &rectValues, float angle)
+{
+    for (int32_t value : rectValues) {
+        parcel.WriteInt32(value);
+    }
+    parcel.WriteFloat(angle);
+}
+
+/*
+* Function: SetScreenInfoRemote / GetScreenInfoRemote
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetScreenInfoRemote with valid rects and angle and check ret
+*                  2. call GetScreenInfoRemote and check rects and angle
+*/
+HWTEST_F(BufferQueueProducerTest, ScreenInfo001, TestSize.Level0)
+{
+    MessageParcel arguments;
+    arguments.WriteInt32(0x10);
+    arguments.WriteInt32(0x20);
+    arguments.WriteInt32(0x100);
+    arguments.WriteInt32(0x200);
+    arguments.WriteInt32(1);
+    arguments.WriteInt32(2);
+    arguments.WriteInt32(3);
+    arguments.WriteInt32(4);
+    arguments.WriteFloat(90.0f);
+    MessageParcel reply;
+    MessageOption option;
+    int32_t ret = bqp_->SetScreenInfoRemote(arguments, reply, option);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_EQ(reply.ReadInt32(), GSERROR_OK);
+
+    MessageParcel getArguments;
+    MessageParcel getReply;
+    ret = bqp_->GetScreenInfoRemote(getArguments, getReply, option);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_EQ(getReply.ReadInt32(), GSERROR_OK);
+    EXPECT_EQ(getReply.ReadInt32(), 0x10);
+    EXPECT_EQ(getReply.ReadInt32(), 0x20);
+    EXPECT_EQ(getReply.ReadInt32(), 0x100);
+    EXPECT_EQ(getReply.ReadInt32(), 0x200);
+    EXPECT_EQ(getReply.ReadInt32(), 1);
+    EXPECT_EQ(getReply.ReadInt32(), 2);
+    EXPECT_EQ(getReply.ReadInt32(), 3);
+    EXPECT_EQ(getReply.ReadInt32(), 4);
+    EXPECT_EQ(getReply.ReadFloat(), 90.0f);
+}
+
+/*
+* Function: SetScreenInfoRemote
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetScreenInfoRemote with invalid rect (negative w/h) and check ret
+*                  2. call GetScreenInfoRemote and check stored screen info is not changed
+*/
+HWTEST_F(BufferQueueProducerTest, ScreenInfo002, TestSize.Level0)
+{
+    MessageParcel arguments;
+    WriteScreenInfoToParcel(arguments, {1, 2, 3, 4, 5, 6, 7, 8}, 45.0f);
+    MessageParcel reply;
+    MessageOption option;
+    int32_t ret = bqp_->SetScreenInfoRemote(arguments, reply, option);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_EQ(reply.ReadInt32(), GSERROR_OK);
+
+    MessageParcel invalidArguments;
+    MessageParcel invalidReply;
+    WriteScreenInfoToParcel(invalidArguments, {0, 0, -1, 4, 5, 6, 7, 8}, 45.0f);
+    ret = bqp_->SetScreenInfoRemote(invalidArguments, invalidReply, option);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_EQ(invalidReply.ReadInt32(), GSERROR_INVALID_ARGUMENTS);
+
+    WriteScreenInfoToParcel(invalidArguments, {1, 2, 3, 4, 0, 0, 4, -1}, 45.0f);
+    ret = bqp_->SetScreenInfoRemote(invalidArguments, invalidReply, option);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_EQ(invalidReply.ReadInt32(), GSERROR_INVALID_ARGUMENTS);
+
+    MessageParcel getArguments;
+    MessageParcel getReply;
+    ret = bqp_->GetScreenInfoRemote(getArguments, getReply, option);
+    EXPECT_EQ(ret, ERR_NONE);
+    EXPECT_EQ(getReply.ReadInt32(), GSERROR_OK);
+    const std::vector<int32_t> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8};
+    for (int32_t expected : expectedValues) {
+        EXPECT_EQ(getReply.ReadInt32(), expected);
+    }
+    EXPECT_EQ(getReply.ReadFloat(), 45.0f);
+}
+
+/*
+* Function: SetScreenInfoRemote
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetScreenInfoRemote with parcel containing only 0-8 of the 9 required values
+*                  2. check each read failure branch returns GSERROR_BINDER
+*/
+HWTEST_F(BufferQueueProducerTest, ScreenInfo003, TestSize.Level0)
+{
+    MessageOption option;
+    for (int32_t count = 0; count < 9; count++) {
+        MessageParcel arguments;
+        for (int32_t i = 0; i < count; i++) {
+            arguments.WriteInt32(i);
+        }
+        MessageParcel reply;
+        int32_t ret = bqp_->SetScreenInfoRemote(arguments, reply, option);
+        EXPECT_EQ(ret, GSERROR_BINDER);
+    }
+}
+
+/*
+* Function: SetScreenInfoRemote
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetScreenInfoRemote with a full reply parcel and check ret
+*/
+HWTEST_F(BufferQueueProducerTest, ScreenInfo004, TestSize.Level0)
+{
+    MessageParcel arguments;
+    arguments.WriteInt32(0x10);
+    arguments.WriteInt32(0x20);
+    arguments.WriteInt32(0x100);
+    arguments.WriteInt32(0x200);
+    arguments.WriteInt32(1);
+    arguments.WriteInt32(2);
+    arguments.WriteInt32(3);
+    arguments.WriteInt32(4);
+    arguments.WriteFloat(45.0f);
+    MessageParcel reply;
+    while (reply.WriteInt32(0)) {
+    }
+    MessageOption option;
+    int32_t ret = bqp_->SetScreenInfoRemote(arguments, reply, option);
+    EXPECT_EQ(ret, IPC_STUB_WRITE_PARCEL_ERR);
+}
+
+/*
+* Function: GetScreenInfoRemote
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call GetScreenInfoRemote with a null buffer queue producer and check ret
+*                  2. check the reply contains the error code
+*/
+HWTEST_F(BufferQueueProducerTest, ScreenInfo005, TestSize.Level0)
+{
+    sptr<BufferQueue> nullQueue = nullptr;
+    sptr<BufferQueueProducer> bqpNull = new BufferQueueProducer(nullQueue);
+    MessageParcel arguments;
+    MessageParcel reply;
+    MessageOption option;
+    int32_t ret = bqpNull->GetScreenInfoRemote(arguments, reply, option);
+    EXPECT_EQ(ret, ERR_INVALID_REPLY);
+    EXPECT_EQ(reply.ReadInt32(), GSERROR_INVALID_ARGUMENTS);
+}
+
+/*
+* Function: GetScreenInfoRemote
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call GetScreenInfoRemote with a null buffer queue producer and a full reply parcel
+*                  and check ret
+*/
+HWTEST_F(BufferQueueProducerTest, ScreenInfo006, TestSize.Level0)
+{
+    sptr<BufferQueue> nullQueue = nullptr;
+    sptr<BufferQueueProducer> bqpNull = new BufferQueueProducer(nullQueue);
+    MessageParcel arguments;
+    MessageParcel reply;
+    while (reply.WriteInt32(0)) {
+    }
+    MessageOption option;
+    int32_t ret = bqpNull->GetScreenInfoRemote(arguments, reply, option);
+    EXPECT_EQ(ret, IPC_STUB_WRITE_PARCEL_ERR);
+}
+
+/*
+* Function: GetScreenInfoRemote
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call GetScreenInfoRemote with reply parcels having 0-9 free 4-byte slots
+*                  2. check each reply write failure branch returns IPC_STUB_WRITE_PARCEL_ERR
+*/
+HWTEST_F(BufferQueueProducerTest, ScreenInfo007, TestSize.Level0)
+{
+    constexpr int32_t replyWriteCount = 10; // 1 retval + 8 rect int32 + 1 angle float
+    MessageParcel probe;
+    int32_t maxInt32Count = 0;
+    while (probe.WriteInt32(0)) {
+        maxInt32Count++;
+    }
+    ASSERT_GE(maxInt32Count, replyWriteCount);
+    for (int32_t freeSlots = 0; freeSlots < replyWriteCount; freeSlots++) {
+        MessageParcel reply;
+        int32_t written = 0;
+        while (written < maxInt32Count - freeSlots) {
+            ASSERT_TRUE(reply.WriteInt32(0));
+            written++;
+        }
+        MessageParcel arguments;
+        MessageOption option;
+        int32_t ret = bqp_->GetScreenInfoRemote(arguments, reply, option);
+        EXPECT_EQ(ret, IPC_STUB_WRITE_PARCEL_ERR);
+    }
+}
+
 /*
 * Function: SetDefaultUsage
 * Type: Function

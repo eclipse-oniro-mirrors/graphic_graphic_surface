@@ -368,6 +368,107 @@ HWTEST_F(NativeWindowTest, HandleOptSetDmaBufferNameInvalid, TestSize.Level0)
 * Type: Function
 * Rank: Important(2)
 * EnvConditions: N/A
+* CaseDescription: 1. call OH_NativeWindow_NativeWindowHandleOpt with
+                    OH_NATIVEWINDOW_SET_SCREEN_INFO and valid rects and angle
+*                  2. call OH_NativeWindow_NativeWindowHandleOpt with
+                    OH_NATIVEWINDOW_GET_SCREEN_INFO and check rects and angle
+*/
+HWTEST_F(NativeWindowTest, HandleOptScreenInfo001, TestSize.Level0)
+{
+    OH_NativeWindow_ScreenInfoRect currentFrameRectSet = {0x10, 0x20, 0x100, 0x200};
+    OH_NativeWindow_ScreenInfoRect originalRectSet = {1, 2, 3, 4};
+    float angleSet = 90.0f;
+    int32_t ret = OH_NativeWindow_NativeWindowHandleOpt(
+        nativeWindow, OH_NATIVEWINDOW_SET_SCREEN_INFO, &currentFrameRectSet, &originalRectSet, angleSet);
+    ASSERT_EQ(ret, OHOS::SURFACE_ERROR_OK);
+
+    OH_NativeWindow_ScreenInfoRect currentFrameRectGet = {0, 0, 0, 0};
+    OH_NativeWindow_ScreenInfoRect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    ret = OH_NativeWindow_NativeWindowHandleOpt(
+        nativeWindow, OH_NATIVEWINDOW_GET_SCREEN_INFO, &currentFrameRectGet, &originalRectGet, &angleGet);
+    ASSERT_EQ(ret, OHOS::SURFACE_ERROR_OK);
+    EXPECT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    EXPECT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    EXPECT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    EXPECT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    EXPECT_EQ(originalRectGet.x, originalRectSet.x);
+    EXPECT_EQ(originalRectGet.y, originalRectSet.y);
+    EXPECT_EQ(originalRectGet.w, originalRectSet.w);
+    EXPECT_EQ(originalRectGet.h, originalRectSet.h);
+    EXPECT_EQ(angleGet, angleSet);
+}
+
+static int32_t SetScreenInfoOpt(const OH_NativeWindow_ScreenInfoRect *currentRect,
+    const OH_NativeWindow_ScreenInfoRect *originalRect, float angle)
+{
+    return OH_NativeWindow_NativeWindowHandleOpt(
+        NativeWindowTest::nativeWindow, OH_NATIVEWINDOW_SET_SCREEN_INFO, currentRect, originalRect, angle);
+}
+
+static int32_t GetScreenInfoOpt(OH_NativeWindow_ScreenInfoRect *currentRect,
+    OH_NativeWindow_ScreenInfoRect *originalRect, float *angle)
+{
+    return OH_NativeWindow_NativeWindowHandleOpt(
+        NativeWindowTest::nativeWindow, OH_NATIVEWINDOW_GET_SCREEN_INFO, currentRect, originalRect, angle);
+}
+
+/*
+* Function: OH_NativeWindow_NativeWindowHandleOpt
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call OH_NativeWindow_NativeWindowHandleOpt with
+                    OH_NATIVEWINDOW_SET_SCREEN_INFO and nullptr rect
+*                  2. call OH_NativeWindow_NativeWindowHandleOpt with
+                    OH_NATIVEWINDOW_SET_SCREEN_INFO and invalid rect (negative w/h)
+*                  3. check stored screen info is not changed
+*                  4. call OH_NativeWindow_NativeWindowHandleOpt with
+                    OH_NATIVEWINDOW_SET_SCREEN_INFO and out-of-range angle and check it is accepted
+*/
+HWTEST_F(NativeWindowTest, HandleOptScreenInfo002, TestSize.Level0)
+{
+    OH_NativeWindow_ScreenInfoRect currentFrameRectSet = {1, 2, 3, 4};
+    OH_NativeWindow_ScreenInfoRect originalRectSet = {5, 6, 7, 8};
+    ASSERT_EQ(SetScreenInfoOpt(&currentFrameRectSet, &originalRectSet, 45.0f), OHOS::SURFACE_ERROR_OK);
+
+    OH_NativeWindow_ScreenInfoRect validRect = {1, 2, 3, 4};
+    ASSERT_EQ(SetScreenInfoOpt(nullptr, &originalRectSet, 45.0f), OHOS::SURFACE_ERROR_OK);
+    ASSERT_EQ(SetScreenInfoOpt(&currentFrameRectSet, nullptr, 45.0f), OHOS::SURFACE_ERROR_OK);
+
+    OH_NativeWindow_ScreenInfoRect invalidRect = {0, 0, -1, 4};
+    ASSERT_EQ(SetScreenInfoOpt(&invalidRect, &validRect, 45.0f), OHOS::SURFACE_ERROR_OK);
+    ASSERT_EQ(SetScreenInfoOpt(&validRect, &invalidRect, 45.0f), OHOS::SURFACE_ERROR_OK);
+
+    OH_NativeWindow_ScreenInfoRect currentFrameRectGet = {0, 0, 0, 0};
+    OH_NativeWindow_ScreenInfoRect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    ASSERT_EQ(GetScreenInfoOpt(&currentFrameRectGet, &originalRectGet, &angleGet), OHOS::SURFACE_ERROR_OK);
+    EXPECT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    EXPECT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    EXPECT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    EXPECT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    EXPECT_EQ(originalRectGet.x, originalRectSet.x);
+    EXPECT_EQ(originalRectGet.y, originalRectSet.y);
+    EXPECT_EQ(originalRectGet.w, originalRectSet.w);
+    EXPECT_EQ(originalRectGet.h, originalRectSet.h);
+    EXPECT_EQ(angleGet, 45.0f);
+
+    ASSERT_EQ(SetScreenInfoOpt(&validRect, &validRect, -0.1f), OHOS::SURFACE_ERROR_OK);
+    ASSERT_EQ(SetScreenInfoOpt(&validRect, &validRect, 360.1f), OHOS::SURFACE_ERROR_OK);
+    ASSERT_EQ(GetScreenInfoOpt(&currentFrameRectGet, &originalRectGet, &angleGet), OHOS::SURFACE_ERROR_OK);
+    EXPECT_EQ(angleGet, 360.1f);
+
+    ASSERT_EQ(GetScreenInfoOpt(nullptr, &originalRectGet, &angleGet), OHOS::SURFACE_ERROR_OK);
+    ASSERT_EQ(GetScreenInfoOpt(&currentFrameRectGet, nullptr, &angleGet), OHOS::SURFACE_ERROR_OK);
+    ASSERT_EQ(GetScreenInfoOpt(&currentFrameRectGet, &originalRectGet, nullptr), OHOS::SURFACE_ERROR_OK);
+}
+
+/*
+* Function: OH_NativeWindow_NativeWindowHandleOpt
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
 * CaseDescription: 1. call OH_NativeWindow_NativeWindowHandleOpt by different param
 *                  2. check ret
  */

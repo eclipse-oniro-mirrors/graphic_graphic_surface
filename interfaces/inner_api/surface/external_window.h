@@ -93,6 +93,39 @@ typedef struct Region {
     int32_t rectNumber;
 }Region;
 
+/**
+ * @brief Describes a rectangle with int32_t coordinates and dimensions.
+ *
+ * Used by {@link SET_SCREEN_INFO} and {@link GET_SCREEN_INFO} operation codes
+ * of {@link OH_NativeWindow_NativeWindowHandleOpt} to carry per-frame offset/size
+ * and original-in-screen offset/size.
+ *
+ * @syscap SystemCapability.Graphic.Graphic2D.NativeWindow
+ * @since 26.2.0
+ */
+typedef struct OH_NativeWindow_ScreenInfoRect {
+    /**
+     * x offset in pixels
+     * @since 26.2.0
+     */
+    int32_t x;
+    /**
+     * y offset in pixels
+     * @since 26.2.0
+     */
+    int32_t y;
+    /**
+     * width in pixels
+     * @since 26.2.0
+     */
+    int32_t w;
+    /**
+     * height in pixels
+     * @since 26.2.0
+     */
+    int32_t h;
+} OH_NativeWindow_ScreenInfoRect;
+
 
 /**
  * @brief Indicates the operation code in the function OH_NativeWindow_NativeWindowHandleOpt.
@@ -280,6 +313,31 @@ typedef enum NativeWindowOperation {
      * @since 26.1.0
      */
     OH_NATIVEWINDOW_SET_DMABUFFER_NAME = 25,
+    /**
+     * Set native window screen info, includes current-frame rect,
+     * original-in-screen rect and free-form rotation angle in degree.
+     * variable parameters in function are
+     * [in] const OH_NativeWindow_ScreenInfoRect *currentFrameRect,
+     * [in] const OH_NativeWindow_ScreenInfoRect *originalRect,
+     * [in] float angle.
+     *
+     * Note: the variadic entrypoint always returns GSERROR_OK to the caller;
+     * IPC errors are written into the reply parcel by the consumer-side stub
+     * but are NOT propagated back through the variadic handler.
+     * @since 26.2.0
+     */
+    OH_NATIVEWINDOW_SET_SCREEN_INFO = 26,
+    /**
+     * Get native window screen info previously set via SET_SCREEN_INFO.
+     * variable parameters in function are
+     * [out] OH_NativeWindow_ScreenInfoRect *currentFrameRect,
+     * [out] OH_NativeWindow_ScreenInfoRect *originalRect,
+     * [out] float *angle.
+     *
+     * Note: same variadic-return limitation as SET_SCREEN_INFO applies.
+     * @since 26.2.0
+     */
+    OH_NATIVEWINDOW_GET_SCREEN_INFO = 27,
 } NativeWindowOperation;
 
 /**

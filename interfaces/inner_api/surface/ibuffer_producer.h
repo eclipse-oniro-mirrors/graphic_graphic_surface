@@ -282,6 +282,20 @@ public:
     }
     virtual GSError SetVideoDimensionType(VideoDimType videoDimType) = 0;
     virtual GSError GetVideoDimensionType(VideoDimType &videoDimType) = 0;
+    virtual GSError SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+    {
+        (void)currentFrameRect;
+        (void)originalRect;
+        (void)angle;
+        return GSERROR_NOT_SUPPORT;
+    }
+    virtual GSError GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle)
+    {
+        (void)currentFrameRect;
+        (void)originalRect;
+        (void)angle;
+        return GSERROR_NOT_SUPPORT;
+    }
     DECLARE_INTERFACE_DESCRIPTOR(u"surf.IBufferProducer");
 
 protected:
@@ -356,6 +370,8 @@ protected:
         BUFFER_PRODUCER_SET_SINGLE_BUFFER_MODE,
         BUFFER_PRODUCER_SET_VIDEO_DIMENSION_TYPE,
         BUFFER_PRODUCER_GET_VIDEO_DIMENSION_TYPE,
+        BUFFER_PRODUCER_SET_SCREEN_INFO,
+        BUFFER_PRODUCER_GET_SCREEN_INFO,
     };
 };
 } // namespace OHOS

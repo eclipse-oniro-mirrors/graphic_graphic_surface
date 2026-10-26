@@ -987,6 +987,23 @@ SingleBufferMode SurfaceBufferImpl::GetAndResetSingleBufferMode()
     return ret;
 }
 
+void SurfaceBufferImpl::SetSurfaceBufferScreenInfo(const Rect &currentFrameRect, const Rect &originalRect,
+    float angle)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    screenInfoCurrentFrameRect_ = currentFrameRect;
+    screenInfoOriginalRect_ = originalRect;
+    screenInfoAngle_ = angle;
+}
+
+void SurfaceBufferImpl::GetSurfaceBufferScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    currentFrameRect = screenInfoCurrentFrameRect_;
+    originalRect = screenInfoOriginalRect_;
+    angle = screenInfoAngle_;
+}
+
 void SurfaceBufferImpl::SetBufferDeletedFlag(BufferDeletedFlag bufferDeletedFlag)
 {
     bufferDeletedFlag_.fetch_or(static_cast<uint32_t>(bufferDeletedFlag), std::memory_order_relaxed);

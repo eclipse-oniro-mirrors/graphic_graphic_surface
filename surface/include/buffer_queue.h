@@ -237,6 +237,9 @@ public:
     float GetHdrWhitePointBrightness() const;
     float GetSdrWhitePointBrightness() const;
 
+    GSError SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle);
+    GSError GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) const;
+
     GSError IsSurfaceBufferInCache(uint32_t seqNum, bool &isInCache);
 
     GSError AcquireLastFlushedBuffer(sptr<SurfaceBuffer> &buffer, sptr<SyncFence> &fence,
@@ -437,6 +440,9 @@ private:
     std::string appFrameworkType_ = "";
     float hdrWhitePointBrightness_ = 0.0;
     float sdrWhitePointBrightness_ = 0.0;
+    Rect currentFrameRect_ = {0, 0, 0, 0};
+    Rect originalRect_ = {0, 0, 0, 0};
+    float screenInfoAngle_ = 0.0f;
     uint32_t acquireLastFlushedBufSequence_;
     int32_t globalAlpha_ = -1;
     // The default is false, where true indicates non blocking mode and false indicates blocking mode.

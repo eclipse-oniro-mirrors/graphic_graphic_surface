@@ -3833,4 +3833,172 @@ HWTEST_F(BufferQueueTest, DoFlushBufferLocked001, TestSize.Level0)
     auto ret = bufferqueue->DoFlushBuffer(seq, bedata, syncFence, flushConfig);
     ASSERT_EQ(ret, GSERROR_OK);
 }
+
+/*
+* Function: SetScreenInfo and GetScreenInfo
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call GetScreenInfo on a new BufferQueue and check default value
+*                  2. call SetScreenInfo with valid rects and angle and check ret
+*                  3. call GetScreenInfo and check the value
+*/
+HWTEST_F(BufferQueueTest, ScreenInfo001, TestSize.Level0)
+{
+    sptr<BufferQueue> bqTmp = new BufferQueue("testScreenInfo");
+    Rect currentFrameRectGet = {1, 2, 3, 4};
+    Rect originalRectGet = {5, 6, 7, 8};
+    float angleGet = 1.0f;
+    GSError ret = bqTmp->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_EQ(currentFrameRectGet.x, 0);
+    ASSERT_EQ(currentFrameRectGet.y, 0);
+    ASSERT_EQ(currentFrameRectGet.w, 0);
+    ASSERT_EQ(currentFrameRectGet.h, 0);
+    ASSERT_EQ(originalRectGet.x, 0);
+    ASSERT_EQ(originalRectGet.y, 0);
+    ASSERT_EQ(originalRectGet.w, 0);
+    ASSERT_EQ(originalRectGet.h, 0);
+    ASSERT_EQ(angleGet, 0.0f);
+
+    Rect currentFrameRectSet = { .x = 0x10, .y = 0x20, .w = 0x100, .h = 0x200 };
+    Rect originalRectSet = { .x = 1, .y = 2, .w = 3, .h = 4 };
+    ret = bqTmp->SetScreenInfo(currentFrameRectSet, originalRectSet, 90.0f);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    ret = bqTmp->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    ASSERT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    ASSERT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    ASSERT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    ASSERT_EQ(originalRectGet.x, originalRectSet.x);
+    ASSERT_EQ(originalRectGet.y, originalRectSet.y);
+    ASSERT_EQ(originalRectGet.w, originalRectSet.w);
+    ASSERT_EQ(originalRectGet.h, originalRectSet.h);
+    ASSERT_EQ(angleGet, 90.0f);
+}
+
+/*
+* Function: SetScreenInfo
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetScreenInfo with negative w/h and check ret
+*                  2. call SetScreenInfo with out-of-range angle and check the ret
+*                  3. call GetScreenInfo and check the stored screen info
+*/
+HWTEST_F(BufferQueueTest, ScreenInfo002, TestSize.Level0)
+{
+    Rect currentFrameRectSet = { .x = 1, .y = 2, .w = 3, .h = 4 };
+    Rect originalRectSet = { .x = 5, .y = 6, .w = 7, .h = 8 };
+    GSError ret = bq->SetScreenInfo(currentFrameRectSet, originalRectSet, 45.0f);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    Rect invalidRect = { .x = 0, .y = 0, .w = -1, .h = 4 };
+    ret = bq->SetScreenInfo(invalidRect, originalRectSet, 45.0f);
+    ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
+
+    invalidRect = { .x = 0, .y = 0, .w = 4, .h = -1 };
+    ret = bq->SetScreenInfo(currentFrameRectSet, invalidRect, 45.0f);
+    ASSERT_EQ(ret, GSERROR_INVALID_ARGUMENTS);
+
+    ret = bq->SetScreenInfo(currentFrameRectSet, originalRectSet, -0.1f);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    ret = bq->SetScreenInfo(currentFrameRectSet, originalRectSet, 360.1f);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    Rect currentFrameRectGet = {0, 0, 0, 0};
+    Rect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    ret = bq->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    ASSERT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    ASSERT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    ASSERT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    ASSERT_EQ(originalRectGet.x, originalRectSet.x);
+    ASSERT_EQ(originalRectGet.y, originalRectSet.y);
+    ASSERT_EQ(originalRectGet.w, originalRectSet.w);
+    ASSERT_EQ(originalRectGet.h, originalRectSet.h);
+    ASSERT_EQ(angleGet, 360.1f);
+}
+
+static GSError RequestAndFlushWithScreenInfo(const sptr<BufferQueue> &queue, const Rect &currentFrameRect,
+    const Rect &originalRect, float angle)
+{
+    IBufferProducer::RequestBufferReturnValue retval;
+    GSError ret = queue->RequestBuffer(BufferQueueTest::requestConfig, BufferQueueTest::bedata, retval);
+    EXPECT_EQ(ret, GSERROR_OK);
+    if (ret != GSERROR_OK) {
+        return ret;
+    }
+    EXPECT_NE(retval.buffer, nullptr);
+    ret = queue->SetScreenInfo(currentFrameRect, originalRect, angle);
+    EXPECT_EQ(ret, GSERROR_OK);
+    if (ret != GSERROR_OK) {
+        return ret;
+    }
+    return queue->FlushBuffer(retval.sequence, BufferQueueTest::bedata, SyncFence::INVALID_FENCE,
+        BufferQueueTest::flushConfig);
+}
+
+static GSError AcquireAndCheckScreenInfo(const sptr<BufferQueue> &queue, const Rect &expectedCurrentFrameRect,
+    const Rect &expectedOriginalRect, float expectedAngle)
+{
+    sptr<SurfaceBuffer> buffer;
+    sptr<SyncFence> releaseFence = SyncFence::INVALID_FENCE;
+    int64_t timestamp = 0;
+    std::vector<Rect> damages;
+    GSError ret = queue->AcquireBuffer(buffer, releaseFence, timestamp, damages);
+    EXPECT_EQ(ret, GSERROR_OK);
+    if (ret != GSERROR_OK) {
+        return ret;
+    }
+    Rect currentFrameRectGet = {0, 0, 0, 0};
+    Rect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    buffer->GetSurfaceBufferScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    EXPECT_EQ(currentFrameRectGet.x, expectedCurrentFrameRect.x);
+    EXPECT_EQ(currentFrameRectGet.y, expectedCurrentFrameRect.y);
+    EXPECT_EQ(currentFrameRectGet.w, expectedCurrentFrameRect.w);
+    EXPECT_EQ(currentFrameRectGet.h, expectedCurrentFrameRect.h);
+    EXPECT_EQ(originalRectGet.x, expectedOriginalRect.x);
+    EXPECT_EQ(originalRectGet.y, expectedOriginalRect.y);
+    EXPECT_EQ(originalRectGet.w, expectedOriginalRect.w);
+    EXPECT_EQ(originalRectGet.h, expectedOriginalRect.h);
+    EXPECT_EQ(angleGet, expectedAngle);
+    return queue->ReleaseBuffer(buffer, releaseFence);
+}
+
+/*
+* Function: SetScreenInfo with FlushBuffer and AcquireBuffer
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. request two buffers
+*                  2. set screen info A, flush the first buffer, then set screen info B, flush the second buffer
+*                  3. acquire buffers and check each acquired buffer carries the screen info set before its own flush
+*/
+HWTEST_F(BufferQueueTest, ScreenInfo003, TestSize.Level0)
+{
+    bq->CleanCache(false, nullptr);
+    ASSERT_EQ(bq->SetQueueSize(3), GSERROR_OK);
+
+    Rect currentFrameRectA = { .x = 0x10, .y = 0x20, .w = 0x100, .h = 0x200 };
+    Rect originalRectA = { .x = 1, .y = 2, .w = 3, .h = 4 };
+    Rect currentFrameRectB = { .x = 0x30, .y = 0x40, .w = 0x300, .h = 0x400 };
+    Rect originalRectB = { .x = 5, .y = 6, .w = 7, .h = 8 };
+
+    GSError ret = RequestAndFlushWithScreenInfo(bq, currentFrameRectA, originalRectA, 45.0f);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ret = RequestAndFlushWithScreenInfo(bq, currentFrameRectB, originalRectB, 90.0f);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    ret = AcquireAndCheckScreenInfo(bq, currentFrameRectA, originalRectA, 45.0f);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ret = AcquireAndCheckScreenInfo(bq, currentFrameRectB, originalRectB, 90.0f);
+    ASSERT_EQ(ret, GSERROR_OK);
+}
 } // namespace OHOS::Rosen

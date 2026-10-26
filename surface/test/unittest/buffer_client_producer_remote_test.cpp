@@ -624,6 +624,67 @@ HWTEST_F(BufferClientProducerRemoteTest, SurfaceAppFrameworkType001, TestSize.Le
     bp->GetSurfaceAppFrameworkType(appFrameworkType);
     ASSERT_EQ(appFrameworkType, "test");
 }
+
+/*
+* Function: SetScreenInfo and GetScreenInfo
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call GetScreenInfo for default
+*                  2. call SetScreenInfo and check the ret
+*                  3. call SetScreenInfo with negative w/h and check the ret
+*/
+HWTEST_F(BufferClientProducerRemoteTest, ScreenInfo001, TestSize.Level0)
+{
+    Rect currentFrameRectGet = {1, 2, 3, 4};
+    Rect originalRectGet = {5, 6, 7, 8};
+    float angleGet = 1.0f;
+    GSError ret = bp->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    ASSERT_EQ(currentFrameRectGet.x, 0);
+    ASSERT_EQ(currentFrameRectGet.y, 0);
+    ASSERT_EQ(currentFrameRectGet.w, 0);
+    ASSERT_EQ(currentFrameRectGet.h, 0);
+    ASSERT_EQ(originalRectGet.x, 0);
+    ASSERT_EQ(originalRectGet.y, 0);
+    ASSERT_EQ(originalRectGet.w, 0);
+    ASSERT_EQ(originalRectGet.h, 0);
+    ASSERT_EQ(angleGet, 0.0f);
+
+    Rect currentFrameRectSet = { .x = 0x10, .y = 0x20, .w = 0x100, .h = 0x200 };
+    Rect originalRectSet = { .x = 1, .y = 2, .w = 3, .h = 4 };
+    ret = bp->SetScreenInfo(currentFrameRectSet, originalRectSet, 90.0f);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    ret = bp->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    ASSERT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    ASSERT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    ASSERT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    ASSERT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    ASSERT_EQ(originalRectGet.x, originalRectSet.x);
+    ASSERT_EQ(originalRectGet.y, originalRectSet.y);
+    ASSERT_EQ(originalRectGet.w, originalRectSet.w);
+    ASSERT_EQ(originalRectGet.h, originalRectSet.h);
+    ASSERT_EQ(angleGet, 90.0f);
+
+    Rect invalidRect = { .x = 0, .y = 0, .w = -1, .h = 4 };
+    ret = bp->SetScreenInfo(invalidRect, originalRectSet, 90.0f);
+    ASSERT_EQ(ret, OHOS::GSERROR_INVALID_ARGUMENTS);
+    ret = bp->SetScreenInfo(currentFrameRectSet, invalidRect, 90.0f);
+    ASSERT_EQ(ret, OHOS::GSERROR_INVALID_ARGUMENTS);
+    ret = bp->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    ASSERT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    ASSERT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    ASSERT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    ASSERT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    ASSERT_EQ(originalRectGet.x, originalRectSet.x);
+    ASSERT_EQ(originalRectGet.y, originalRectSet.y);
+    ASSERT_EQ(originalRectGet.w, originalRectSet.w);
+    ASSERT_EQ(originalRectGet.h, originalRectSet.h);
+    ASSERT_EQ(angleGet, 90.0f);
+}
+
 /*
 * Function: RequestBuffersAndFlushBuffers
 * Type: Function
