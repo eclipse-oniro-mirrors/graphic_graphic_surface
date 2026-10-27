@@ -86,6 +86,8 @@ const std::map<uint32_t, std::function<int32_t(BufferQueueProducer *that, Messag
     BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_SET_SCALING_MODEV2, SetScalingModeV2Remote),
     BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_SET_VIDEO_DIMENSION_TYPE, SetVideoDimensionTypeRemote),
     BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_GET_VIDEO_DIMENSION_TYPE, GetVideoDimensionTypeRemote),
+    BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_SET_SCREEN_INFO, SetScreenInfoRemote),
+    BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_GET_SCREEN_INFO, GetScreenInfoRemote),
     BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_SET_SOURCE_TYPE, SetSurfaceSourceTypeRemote),
     BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_GET_SOURCE_TYPE, GetSurfaceSourceTypeRemote),
     BUFFER_PRODUCER_API_FUNC_PAIR(BUFFER_PRODUCER_SET_APP_FRAMEWORK_TYPE, SetSurfaceAppFrameworkTypeRemote),
@@ -934,6 +936,49 @@ int32_t BufferQueueProducer::GetVideoDimensionTypeRemote(MessageParcel &argument
         return ERR_INVALID_REPLY;
     }
     if (!reply.WriteInt32(GSERROR_OK) || !reply.WriteInt32(static_cast<int32_t>(videoDimType))) {
+        return IPC_STUB_WRITE_PARCEL_ERR;
+    }
+    return ERR_NONE;
+}
+
+int32_t BufferQueueProducer::SetScreenInfoRemote(MessageParcel &arguments, MessageParcel &reply,
+    MessageOption &option)
+{
+    Rect currentFrameRect = {0, 0, 0, 0};
+    Rect originalRect = {0, 0, 0, 0};
+    float angle = 0.0f;
+    if (!arguments.ReadInt32(currentFrameRect.x) || !arguments.ReadInt32(currentFrameRect.y) ||
+        !arguments.ReadInt32(currentFrameRect.w) || !arguments.ReadInt32(currentFrameRect.h) ||
+        !arguments.ReadInt32(originalRect.x) || !arguments.ReadInt32(originalRect.y) ||
+        !arguments.ReadInt32(originalRect.w) || !arguments.ReadInt32(originalRect.h) ||
+        !arguments.ReadFloat(angle)) {
+        return GSERROR_BINDER;
+    }
+    GSError sRet = SetScreenInfo(currentFrameRect, originalRect, angle);
+    if (!reply.WriteInt32(sRet)) {
+        return IPC_STUB_WRITE_PARCEL_ERR;
+    }
+    return ERR_NONE;
+}
+
+int32_t BufferQueueProducer::GetScreenInfoRemote(MessageParcel &arguments, MessageParcel &reply,
+    MessageOption &option)
+{
+    Rect currentFrameRect = {0, 0, 0, 0};
+    Rect originalRect = {0, 0, 0, 0};
+    float angle = 0.0f;
+    GSError ret = GetScreenInfo(currentFrameRect, originalRect, angle);
+    if (ret != GSERROR_OK) {
+        if (!reply.WriteInt32(static_cast<int32_t>(ret))) {
+            return IPC_STUB_WRITE_PARCEL_ERR;
+        }
+        return ERR_INVALID_REPLY;
+    }
+    if (!reply.WriteInt32(GSERROR_OK) || !reply.WriteInt32(currentFrameRect.x) ||
+        !reply.WriteInt32(currentFrameRect.y) || !reply.WriteInt32(currentFrameRect.w) ||
+        !reply.WriteInt32(currentFrameRect.h) || !reply.WriteInt32(originalRect.x) ||
+        !reply.WriteInt32(originalRect.y) || !reply.WriteInt32(originalRect.w) ||
+        !reply.WriteInt32(originalRect.h) || !reply.WriteFloat(angle)) {
         return IPC_STUB_WRITE_PARCEL_ERR;
     }
     return ERR_NONE;
@@ -2058,6 +2103,27 @@ GSError BufferQueueProducer::GetVideoDimensionType(VideoDimType &videoDimType)
         return GSERROR_INVALID_ARGUMENTS;
     }
     return bufferQueue_->GetVideoDimensionType(videoDimType);
+}
+
+GSError BufferQueueProducer::SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (bufferQueue_ == nullptr) {
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    return bufferQueue_->SetScreenInfo(currentFrameRect, originalRect, angle);
+}
+
+GSError BufferQueueProducer::GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (bufferQueue_ == nullptr) {
+        currentFrameRect = {0, 0, 0, 0};
+        originalRect = {0, 0, 0, 0};
+        angle = 0.0f;
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    return bufferQueue_->GetScreenInfo(currentFrameRect, originalRect, angle);
 }
 
 GSError BufferQueueProducer::SetBufferHold(bool hold)

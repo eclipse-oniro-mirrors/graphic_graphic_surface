@@ -2490,4 +2490,60 @@ HWTEST_F(SurfaceBufferImplTest, TryResumeIfNeeded003, TestSize.Level0)
     handle2->fd = -1;
     impl->SetBufferHandle(handle2);
 }
+
+/*
+ * Function: SetSurfaceBufferScreenInfo and GetSurfaceBufferScreenInfo
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. call GetSurfaceBufferScreenInfo on a new SurfaceBufferImpl and check default value
+ *                  2. call SetSurfaceBufferScreenInfo with valid rects and angle
+ *                  3. call GetSurfaceBufferScreenInfo and check the value
+ *                  4. call SetSurfaceBufferScreenInfo again and check the value is updated
+ */
+HWTEST_F(SurfaceBufferImplTest, ScreenInfo001, TestSize.Level0)
+{
+    sptr<SurfaceBufferImpl> sbi = new SurfaceBufferImpl();
+    Rect currentFrameRectGet = {1, 2, 3, 4};
+    Rect originalRectGet = {5, 6, 7, 8};
+    float angleGet = 1.0f;
+    sbi->GetSurfaceBufferScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(currentFrameRectGet.x, 0);
+    ASSERT_EQ(currentFrameRectGet.y, 0);
+    ASSERT_EQ(currentFrameRectGet.w, 0);
+    ASSERT_EQ(currentFrameRectGet.h, 0);
+    ASSERT_EQ(originalRectGet.x, 0);
+    ASSERT_EQ(originalRectGet.y, 0);
+    ASSERT_EQ(originalRectGet.w, 0);
+    ASSERT_EQ(originalRectGet.h, 0);
+    ASSERT_EQ(angleGet, 0.0f);
+
+    Rect currentFrameRectSet = { .x = 0x10, .y = 0x20, .w = 0x100, .h = 0x200 };
+    Rect originalRectSet = { .x = 1, .y = 2, .w = 3, .h = 4 };
+    sbi->SetSurfaceBufferScreenInfo(currentFrameRectSet, originalRectSet, 90.0f);
+    sbi->GetSurfaceBufferScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    ASSERT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    ASSERT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    ASSERT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    ASSERT_EQ(originalRectGet.x, originalRectSet.x);
+    ASSERT_EQ(originalRectGet.y, originalRectSet.y);
+    ASSERT_EQ(originalRectGet.w, originalRectSet.w);
+    ASSERT_EQ(originalRectGet.h, originalRectSet.h);
+    ASSERT_EQ(angleGet, 90.0f);
+
+    Rect currentFrameRectSet2 = { .x = 0x30, .y = 0x40, .w = 0x300, .h = 0x400 };
+    Rect originalRectSet2 = { .x = 5, .y = 6, .w = 7, .h = 8 };
+    sbi->SetSurfaceBufferScreenInfo(currentFrameRectSet2, originalRectSet2, 45.0f);
+    sbi->GetSurfaceBufferScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(currentFrameRectGet.x, currentFrameRectSet2.x);
+    ASSERT_EQ(currentFrameRectGet.y, currentFrameRectSet2.y);
+    ASSERT_EQ(currentFrameRectGet.w, currentFrameRectSet2.w);
+    ASSERT_EQ(currentFrameRectGet.h, currentFrameRectSet2.h);
+    ASSERT_EQ(originalRectGet.x, originalRectSet2.x);
+    ASSERT_EQ(originalRectGet.y, originalRectSet2.y);
+    ASSERT_EQ(originalRectGet.w, originalRectSet2.w);
+    ASSERT_EQ(originalRectGet.h, originalRectSet2.h);
+    ASSERT_EQ(angleGet, 45.0f);
 }
+} // namespace OHOS::Rosen

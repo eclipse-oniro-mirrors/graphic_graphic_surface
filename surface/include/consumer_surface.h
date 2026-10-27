@@ -351,6 +351,26 @@ public:
      */
     GSError GetVideoDimensionType(uint32_t sequence, VideoDimType &videoDimType) override;
     /**
+     * @brief Set the screen info for the surface.
+     *
+     * @param currentFrameRect [in] The current-frame rect of the surface.
+     * @param originalRect [in] The original-in-screen rect of the surface.
+     * @param angle [in] The free-form rotation angle in degree.
+     * @return {@link GSERROR_OK} 0 - Success.
+     *         {@link GSERROR_INVALID_ARGUMENTS} 40001000 - Param invalid.
+     */
+    GSError SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle) override;
+    /**
+     * @brief Get the screen info from the surface.
+     *
+     * @param currentFrameRect [out] The current-frame rect of the surface.
+     * @param originalRect [out] The original-in-screen rect of the surface.
+     * @param angle [out] The free-form rotation angle in degree.
+     * @return {@link GSERROR_OK} 0 - Success.
+     *         {@link GSERROR_INVALID_ARGUMENTS} 40001000 - Param invalid.
+     */
+    GSError GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) override;
+    /**
      * @brief Set the Meta Data for the surface buffer.
      *
      * @param sequence [in] The number of surface buffer.

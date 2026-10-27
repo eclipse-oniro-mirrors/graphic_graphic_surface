@@ -753,6 +753,41 @@ public:
     {
         return "";
     }
+
+    /**
+     * @brief Set the screen info for the surface.
+     *
+     * @param currentFrameRect [in] The current-frame rect of the surface.
+     * @param originalRect [in] The original-in-screen rect of the surface.
+     * @param angle [in] The free-form rotation angle in degree.
+     * @return {@link GSERROR_OK} 0 - Success.
+     *         {@link GSERROR_INVALID_ARGUMENTS} 40001000 - Param invalid.
+     *         {@link GSERROR_NOT_SUPPORT} 50102000 - Not supported.
+     */
+    virtual GSError SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+    {
+        (void)currentFrameRect;
+        (void)originalRect;
+        (void)angle;
+        return GSERROR_NOT_SUPPORT;
+    }
+    /**
+     * @brief Get the screen info from the surface.
+     *
+     * @param currentFrameRect [out] The current-frame rect of the surface.
+     * @param originalRect [out] The original-in-screen rect of the surface.
+     * @param angle [out] The free-form rotation angle in degree.
+     * @return {@link GSERROR_OK} 0 - Success.
+     *         {@link GSERROR_INVALID_ARGUMENTS} 40001000 - Param invalid.
+     *         {@link GSERROR_NOT_SUPPORT} 50102000 - Not supported.
+     */
+    virtual GSError GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle)
+    {
+        (void)currentFrameRect;
+        (void)originalRect;
+        (void)angle;
+        return GSERROR_NOT_SUPPORT;
+    }
 protected:
     Surface() = default;
     GameUpscaleProcessor gameUpscaleProcessor_ = nullptr;

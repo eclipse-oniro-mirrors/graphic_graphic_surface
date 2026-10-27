@@ -795,6 +795,39 @@ GSError BufferClientProducer::GetVideoDimensionType(VideoDimType &videoDimType)
     return GSERROR_OK;
 }
 
+GSError BufferClientProducer::SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+{
+    DEFINE_MESSAGE_VARIABLES(arguments, reply, option);
+    if (!arguments.WriteInt32(currentFrameRect.x) || !arguments.WriteInt32(currentFrameRect.y) ||
+        !arguments.WriteInt32(currentFrameRect.w) || !arguments.WriteInt32(currentFrameRect.h) ||
+        !arguments.WriteInt32(originalRect.x) || !arguments.WriteInt32(originalRect.y) ||
+        !arguments.WriteInt32(originalRect.w) || !arguments.WriteInt32(originalRect.h) ||
+        !arguments.WriteFloat(angle)) {
+        return GSERROR_BINDER;
+    }
+    SEND_REQUEST(BUFFER_PRODUCER_SET_SCREEN_INFO, arguments, reply, option);
+    return CheckRetval(reply);
+}
+
+GSError BufferClientProducer::GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle)
+{
+    DEFINE_MESSAGE_VARIABLES(arguments, reply, option);
+    SEND_REQUEST(BUFFER_PRODUCER_GET_SCREEN_INFO, arguments, reply, option);
+    GSError ret = CheckRetval(reply);
+    if (ret != GSERROR_OK) {
+        return ret;
+    }
+    if (!reply.ReadInt32(currentFrameRect.x) || !reply.ReadInt32(currentFrameRect.y) ||
+        !reply.ReadInt32(currentFrameRect.w) || !reply.ReadInt32(currentFrameRect.h) ||
+        !reply.ReadInt32(originalRect.x) || !reply.ReadInt32(originalRect.y) ||
+        !reply.ReadInt32(originalRect.w) || !reply.ReadInt32(originalRect.h) ||
+        !reply.ReadFloat(angle)) {
+        BLOGE("GetScreenInfo read screenInfo failed");
+        return GSERROR_BINDER;
+    }
+    return GSERROR_OK;
+}
+
 GSError BufferClientProducer::SetBufferHold(bool hold)
 {
     DEFINE_MESSAGE_VARIABLES(arguments, reply, option);

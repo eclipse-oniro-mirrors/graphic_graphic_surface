@@ -96,6 +96,8 @@ public:
     ScalingMode GetSurfaceBufferScalingMode() const override;
     void SetSingleBufferMode(SingleBufferMode mode) override;
     SingleBufferMode GetAndResetSingleBufferMode() override;
+    void SetSurfaceBufferScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle) override;
+    void GetSurfaceBufferScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) const override;
     void SetBufferDeletedFlag(BufferDeletedFlag bufferDeletedFlag) override;
     BufferDeletedFlag GetBufferDeletedFlag() const override;
     void ClearBufferDeletedFlag(BufferDeletedFlag bufferDeletedFlag) override;
@@ -151,6 +153,9 @@ private:
     ScalingMode scalingMode_ = ScalingMode::SCALING_MODE_SCALE_TO_WINDOW;
     SingleBufferMode singleBufferMode_ = SingleBufferMode::SINGLE_BUFFER_MODE_NONE;
     VideoDimType videoDimType_ = VideoDimType::VIDEO_DIM_TYPE_2D;
+    Rect screenInfoCurrentFrameRect_ = {0, 0, 0, 0};
+    Rect screenInfoOriginalRect_ = {0, 0, 0, 0};
+    float screenInfoAngle_ = 0.0f;
     int32_t surfaceBufferWidth_ = 0;
     int32_t surfaceBufferHeight_ = 0;
     mutable std::mutex mutex_;
