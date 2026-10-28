@@ -96,8 +96,8 @@ typedef struct Region {
 /**
  * @brief Describes a rectangle with int32_t coordinates and dimensions.
  *
- * Used by {@link OH_NATIVEWINDOW_SET_SCREEN_INFO} and {@link OH_NATIVEWINDOW_GET_SCREEN_INFO} 
- * operation codes of {@link OH_NativeWindow_NativeWindowHandleOpt} to carry per-frame offset/size
+ * Used by {@link SET_SCREEN_INFO} and {@link GET_SCREEN_INFO} operation codes
+ * of {@link OH_NativeWindow_NativeWindowHandleOpt} to carry per-frame offset/size
  * and original-in-screen offset/size.
  *
  * @syscap SystemCapability.Graphic.Graphic2D.NativeWindow
@@ -105,22 +105,22 @@ typedef struct Region {
  */
 typedef struct OH_NativeWindow_ScreenInfoRect {
     /**
-     * @brief offset in pixels
+     * x offset in pixels
      * @since 26.1.0
      */
     int32_t x;
     /**
-     * @brief y offset in pixels
+     * y offset in pixels
      * @since 26.1.0
      */
     int32_t y;
     /**
-     * @brief width in pixels
+     * width in pixels
      * @since 26.1.0
      */
     int32_t w;
     /**
-     * @brief height in pixels
+     * height in pixels
      * @since 26.1.0
      */
     int32_t h;
@@ -328,13 +328,13 @@ typedef enum NativeWindowOperation {
      */
     OH_NATIVEWINDOW_SET_SCREEN_INFO = 26,
     /**
-     * Get native window screen info previously set via OH_NATIVEWINDOW_SET_SCREEN_INFO.
+     * Get native window screen info previously set via SET_SCREEN_INFO.
      * variable parameters in function are
      * [out] OH_NativeWindow_ScreenInfoRect *currentFrameRect,
      * [out] OH_NativeWindow_ScreenInfoRect *originalRect,
      * [out] float *angle.
      *
-     * Note: same variadic-return limitation as OH_NATIVEWINDOW_SET_SCREEN_INFO applies.
+     * Note: same variadic-return limitation as SET_SCREEN_INFO applies.
      * @since 26.1.0
      */
     OH_NATIVEWINDOW_GET_SCREEN_INFO = 27,
