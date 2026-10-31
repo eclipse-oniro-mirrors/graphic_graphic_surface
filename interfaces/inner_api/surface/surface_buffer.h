@@ -315,18 +315,6 @@ public:
     {
         return SingleBufferMode::SINGLE_BUFFER_MODE_NONE;
     }
-    virtual void SetSurfaceBufferScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
-    {
-        (void)currentFrameRect;
-        (void)originalRect;
-        (void)angle;
-    }
-    virtual void GetSurfaceBufferScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) const
-    {
-        currentFrameRect = {0, 0, 0, 0};
-        originalRect = {0, 0, 0, 0};
-        angle = 0.0f;
-    }
     // Registers a plain function as the buffer destructor callback, several modules can register on the
     // same buffer and all of them are notified when this buffer is destructed.
     virtual bool RegisterBufferDestructorCallbackFunc(void (*callBack)(uint64_t))
@@ -340,6 +328,18 @@ public:
     {
         (void)callBack;
         return false;
+    }
+    virtual void SetSurfaceBufferScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+    {
+        (void)currentFrameRect;
+        (void)originalRect;
+        (void)angle;
+    }
+    virtual void GetSurfaceBufferScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) const
+    {
+        currentFrameRect = {0, 0, 0, 0};
+        originalRect = {0, 0, 0, 0};
+        angle = 0.0f;
     }
 
 protected:
