@@ -61,6 +61,7 @@ constexpr int32_t UPSCALE_WIDTH_1920 = 1920;
 constexpr int32_t UPSCALE_HEIGHT_1080 = 1080;
 constexpr int32_t UPSCALE_WIDTH_3840 = 3840;
 constexpr int32_t UPSCALE_HEIGHT_2160 = 2160;
+constexpr int32_t SCREEN_TEST_SIZE_MAX = 3840;
 
 } // namespace
 
@@ -514,6 +515,76 @@ void NativeWindowFuzzTestObjectApis(OHNativeWindow *nativeWindow, OHNativeWindow
     ConvertColorSpaceTypeToNativeBufferColorSpace(fdp.ConsumeIntegral<int32_t>(), nullptr);
 }
 
+void NativeWindowFuzzTestScreenInfo(OHNativeWindow *nativeWindow, FuzzedDataProvider& fdp)
+{
+    OH_NativeWindow_ScreenInfoRect currentFrameRect = {0, 0, 0, 0};
+    currentFrameRect.x = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    currentFrameRect.y = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    currentFrameRect.w = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    currentFrameRect.h = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    OH_NativeWindow_ScreenInfoRect originalRect = {0, 0, 0, 0};
+    originalRect.x = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    originalRect.y = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    originalRect.w = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    originalRect.h = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    float angle = fdp.ConsumeFloatingPoint<float>();
+    OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, OH_NATIVEWINDOW_SET_SCREEN_INFO,
+        &currentFrameRect, &originalRect, angle);
+    OH_NativeWindow_ScreenInfoRect currentFrameRectGet = {0, 0, 0, 0};
+    OH_NativeWindow_ScreenInfoRect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, OH_NATIVEWINDOW_GET_SCREEN_INFO,
+        &currentFrameRectGet, &originalRectGet, &angleGet);
+}
+
+void NativeWindowFuzzTestGetScreenInfo(
+    OHNativeWindow *nativeWindow, sptr<OHOS::IConsumerSurface> &cSurface, FuzzedDataProvider& fdp)
+{
+    OH_NativeWindow_ScreenInfoRect currentFrameRect = {0, 0, 0, 0};
+    currentFrameRect.x = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    currentFrameRect.y = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    currentFrameRect.w = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    currentFrameRect.h = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    OH_NativeWindow_ScreenInfoRect originalRect = {0, 0, 0, 0};
+    originalRect.x = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    originalRect.y = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    originalRect.w = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    originalRect.h = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
+    float angle = fdp.ConsumeFloatingPoint<float>();
+    OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, OH_NATIVEWINDOW_SET_SCREEN_INFO,
+        &currentFrameRect, &originalRect, angle);
+
+    OHNativeWindowBuffer *nwBuffer = nullptr;
+    int fenceFd = -1;
+    NativeWindowRequestBuffer(nativeWindow, &nwBuffer, &fenceFd);
+    if (nwBuffer == nullptr) {
+        return;
+    }
+    Region::Rect rect;
+    rect.x = fdp.ConsumeIntegral<int32_t>();
+    rect.y = fdp.ConsumeIntegral<int32_t>();
+    rect.w = fdp.ConsumeIntegral<int32_t>();
+    rect.h = fdp.ConsumeIntegral<int32_t>();
+    Region region = {.rects = &rect, .rectNumber = 1};
+    if (NativeWindowFlushBuffer(nativeWindow, nwBuffer, fenceFd, region) != GSERROR_OK) {
+        NativeWindowCancelBuffer(nativeWindow, nwBuffer);
+        return;
+    }
+
+    sptr<OHOS::SurfaceBuffer> sBuffer = nullptr;
+    int32_t acquireFence = -1;
+    int64_t timestamp = 0;
+    Rect damage = {0, 0, 0, 0};
+    if (cSurface->AcquireBuffer(sBuffer, acquireFence, timestamp, damage) != GSERROR_OK) {
+        return;
+    }
+    Rect currentFrameRectGet = {0, 0, 0, 0};
+    Rect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    sBuffer->GetSurfaceBufferScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    cSurface->ReleaseBuffer(sBuffer, acquireFence);
+}
+
 bool DoSomethingInterestingWithMyAPI(FuzzedDataProvider& fdp)
 {
     sptr<OHOS::IConsumerSurface> cSurface = IConsumerSurface::Create();
@@ -550,6 +621,8 @@ bool DoSomethingInterestingWithMyAPI(FuzzedDataProvider& fdp)
     NativeWindowFuzzTestCreateBufferFromNative(nativeWindow);
     NativeWindowFuzzTestGameUpscaleProcessor(nativeWindow);
     NativeWindowFuzzTestObjectApis(nativeWindow, nwBuffer, fdp);
+    NativeWindowFuzzTestScreenInfo(nativeWindow, fdp);
+    NativeWindowFuzzTestGetScreenInfo(nativeWindow, cSurface, fdp);
     NativeWindowDisconnect(nativeWindow);
     DestoryNativeWindow(nativeWindow);
     return true;

@@ -149,6 +149,8 @@ public:
     GSError CleanProducerBySeqNum(const std::vector<uint32_t>& seqNums) override;
     GSError SetVideoDimensionType(VideoDimType videoDimType) override;
     GSError GetVideoDimensionType(VideoDimType &videoDimType) override;
+    GSError SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle) override;
+    GSError GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) override;
     GSError SetPermissionRules(sptr<ISurfacePermission>& permission);
 
 private:
@@ -233,6 +235,8 @@ private:
     int32_t SetSingleBufferModeRemote(MessageParcel &arguments, MessageParcel &reply, MessageOption &option);
     int32_t SetVideoDimensionTypeRemote(MessageParcel &arguments, MessageParcel &reply, MessageOption &option);
     int32_t GetVideoDimensionTypeRemote(MessageParcel &arguments, MessageParcel &reply, MessageOption &option);
+    int32_t SetScreenInfoRemote(MessageParcel &arguments, MessageParcel &reply, MessageOption &option);
+    int32_t GetScreenInfoRemote(MessageParcel &arguments, MessageParcel &reply, MessageOption &option);
 
     void SetConnectedPidLocked(int32_t connectedPid);
     void SetListenerSeqAndFenceCallingPid(int32_t listenerSeqAndFenceCallingPid);

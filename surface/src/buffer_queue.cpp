@@ -859,6 +859,7 @@ GSError BufferQueue::DoFlushBufferLocked(uint32_t sequence, sptr<BufferExtraData
         BUFFER_SUPPORT_FASTCOMPOSE, supportFastCompose);
     bufferSupportFastCompose_ = (bool)supportFastCompose;
     mapIter->second.buffer->SetSurfaceBufferTransform(transform_);
+    mapIter->second.buffer->SetSurfaceBufferScreenInfo(currentFrameRect_, originalRect_, screenInfoAngle_);
     SetSingleBufferModeToBuffer(singleBufferMode_, mapIter->second.buffer);
 
     uint64_t usage = static_cast<uint32_t>(mapIter->second.config.usage);
@@ -2181,6 +2182,30 @@ float BufferQueue::GetSdrWhitePointBrightness() const
 {
     std::unique_lock<std::mutex> lock(mutex_);
     return sdrWhitePointBrightness_;
+}
+
+GSError BufferQueue::SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+{
+    if (currentFrameRect.w < 0 || currentFrameRect.h < 0 || originalRect.w < 0 || originalRect.h < 0) {
+        BLOGE("SetScreenInfo failed, invalid rect, currentFrameRect w: %{public}d, h: %{public}d, "
+            "originalRect w: %{public}d, h: %{public}d, uniqueId: %{public}" PRIu64 ".",
+            currentFrameRect.w, currentFrameRect.h, originalRect.w, originalRect.h, uniqueId_);
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    std::unique_lock<std::mutex> lock(mutex_);
+    currentFrameRect_ = currentFrameRect;
+    originalRect_ = originalRect;
+    screenInfoAngle_ = angle;
+    return GSERROR_OK;
+}
+
+GSError BufferQueue::GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) const
+{
+    std::unique_lock<std::mutex> lock(mutex_);
+    currentFrameRect = currentFrameRect_;
+    originalRect = originalRect_;
+    angle = screenInfoAngle_;
+    return GSERROR_OK;
 }
 
 GSError BufferQueue::SetSurfaceAppFrameworkType(std::string appFrameworkType)

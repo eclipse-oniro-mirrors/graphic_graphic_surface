@@ -135,6 +135,8 @@ public:
     GSError CleanReleasedBuffers(std::vector<uint32_t> &cleanedSeqNums) override;
     GSError SetVideoDimensionType(VideoDimType videoDimType) override;
     GSError GetVideoDimensionType(VideoDimType &videoDimType) override;
+    GSError SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle) override;
+    GSError GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) override;
 
 private:
     GSError MessageVariables(MessageParcel &arg);

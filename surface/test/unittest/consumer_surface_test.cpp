@@ -3005,4 +3005,56 @@ HWTEST_F(ConsumerSurfaceTest, SetPermissionRules_ValidProducer, TestSize.Level0)
     GSError ret = cSurface->SetPermissionRules(permission);
     ASSERT_EQ(ret, GSERROR_OK);
 }
+
+/*
+* Function: SetScreenInfo and GetScreenInfo
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetScreenInfo with normal parameters and check ret
+*                  2. call GetScreenInfo and check ret
+*/
+HWTEST_F(ConsumerSurfaceTest, ScreenInfo001, TestSize.Level0)
+{
+    Rect currentFrameRectSet = { .x = 0x10, .y = 0x20, .w = 0x100, .h = 0x200 };
+    Rect originalRectSet = { .x = 1, .y = 2, .w = 3, .h = 4 };
+    GSError ret = cs->SetScreenInfo(currentFrameRectSet, originalRectSet, 90.0f);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+
+    Rect currentFrameRectGet = {0, 0, 0, 0};
+    Rect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    ret = cs->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    ASSERT_EQ(currentFrameRectGet.x, currentFrameRectSet.x);
+    ASSERT_EQ(currentFrameRectGet.y, currentFrameRectSet.y);
+    ASSERT_EQ(currentFrameRectGet.w, currentFrameRectSet.w);
+    ASSERT_EQ(currentFrameRectGet.h, currentFrameRectSet.h);
+    ASSERT_EQ(originalRectGet.x, originalRectSet.x);
+    ASSERT_EQ(originalRectGet.y, originalRectSet.y);
+    ASSERT_EQ(originalRectGet.w, originalRectSet.w);
+    ASSERT_EQ(originalRectGet.h, originalRectSet.h);
+    ASSERT_EQ(angleGet, 90.0f);
+}
+
+/*
+* Function: SetScreenInfo and GetScreenInfo
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetScreenInfo with producer_ is nullptr and check ret
+*                  2. call GetScreenInfo with producer_ is nullptr and check ret
+*/
+HWTEST_F(ConsumerSurfaceTest, ScreenInfo002, TestSize.Level0)
+{
+    Rect currentFrameRectSet = { .x = 1, .y = 2, .w = 3, .h = 4 };
+    Rect originalRectSet = { .x = 5, .y = 6, .w = 7, .h = 8 };
+    GSError ret = surface_->SetScreenInfo(currentFrameRectSet, originalRectSet, 45.0f);
+    ASSERT_EQ(ret, OHOS::GSERROR_INVALID_ARGUMENTS);
+    Rect currentFrameRectGet = {0, 0, 0, 0};
+    Rect originalRectGet = {0, 0, 0, 0};
+    float angleGet = 0.0f;
+    ret = surface_->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
+    ASSERT_EQ(ret, OHOS::GSERROR_INVALID_ARGUMENTS);
+}
 }

@@ -329,6 +329,18 @@ public:
         (void)callBack;
         return false;
     }
+    virtual void SetSurfaceBufferScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+    {
+        (void)currentFrameRect;
+        (void)originalRect;
+        (void)angle;
+    }
+    virtual void GetSurfaceBufferScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle) const
+    {
+        currentFrameRect = {0, 0, 0, 0};
+        originalRect = {0, 0, 0, 0};
+        angle = 0.0f;
+    }
 
 protected:
     SurfaceBuffer() {}

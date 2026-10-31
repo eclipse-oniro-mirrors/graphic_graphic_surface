@@ -439,6 +439,33 @@ static void HandleNativeWindowSetDmaBufferName(OHNativeWindow *window, va_list a
     }
 }
 
+static void HandleNativeWindowSetScreenInfo(OHNativeWindow *window, va_list args)
+{
+    const OH_NativeWindow_ScreenInfoRect* currentFrameRect = va_arg(args, const OH_NativeWindow_ScreenInfoRect*);
+    const OH_NativeWindow_ScreenInfoRect* originalRect = va_arg(args, const OH_NativeWindow_ScreenInfoRect*);
+    float angle = static_cast<float>(va_arg(args, double));
+    if (currentFrameRect == nullptr || originalRect == nullptr) {
+        BLOGE("SetScreenInfo failed: currentFrameRect or originalRect is nullptr");
+        return;
+    }
+    OHOS::Rect currentFrame = {
+        .x = currentFrameRect->x,
+        .y = currentFrameRect->y,
+        .w = currentFrameRect->w,
+        .h = currentFrameRect->h,
+    };
+    OHOS::Rect original = {
+        .x = originalRect->x,
+        .y = originalRect->y,
+        .w = originalRect->w,
+        .h = originalRect->h,
+    };
+    GSError ret = window->surface->SetScreenInfo(currentFrame, original, angle);
+    if (ret != GSERROR_OK) {
+        BLOGE("SetScreenInfo failed, ret: %{public}d", ret);
+    }
+}
+
 static void HandleNativeWindowGetUsage(OHNativeWindow *window, va_list args)
 {
     uint64_t *value = va_arg(args, uint64_t*);
@@ -519,6 +546,34 @@ static void HandleNativeWindowGetSurfaceSourceType(OHNativeWindow *window, va_li
     }
 }
 
+static void HandleNativeWindowGetScreenInfo(OHNativeWindow *window, va_list args)
+{
+    OH_NativeWindow_ScreenInfoRect* currentFrameRect = va_arg(args, OH_NativeWindow_ScreenInfoRect*);
+    OH_NativeWindow_ScreenInfoRect* originalRect = va_arg(args, OH_NativeWindow_ScreenInfoRect*);
+    float* angle = va_arg(args, float*);
+    if (currentFrameRect == nullptr || originalRect == nullptr || angle == nullptr) {
+        BLOGE("GetScreenInfo failed: currentFrameRect, originalRect or angle is nullptr");
+        return;
+    }
+    OHOS::Rect currentFrame = {0, 0, 0, 0};
+    OHOS::Rect original = {0, 0, 0, 0};
+    float angleValue = 0.0f;
+    GSError ret = window->surface->GetScreenInfo(currentFrame, original, angleValue);
+    if (ret != GSERROR_OK) {
+        BLOGE("GetScreenInfo failed, ret: %{public}d", ret);
+        return;
+    }
+    currentFrameRect->x = currentFrame.x;
+    currentFrameRect->y = currentFrame.y;
+    currentFrameRect->w = currentFrame.w;
+    currentFrameRect->h = currentFrame.h;
+    originalRect->x = original.x;
+    originalRect->y = original.y;
+    originalRect->w = original.w;
+    originalRect->h = original.h;
+    *angle = angleValue;
+}
+
 static void HandleNativeWindowGetSurfaceAppFrameworkType(OHNativeWindow *window, va_list args)
 {
     const char **appFrameworkType = va_arg(args, const char**);
@@ -572,6 +627,8 @@ static std::map<int, std::function<void(OHNativeWindow*, va_list)>> operationMap
     {SET_SDR_WHITE_POINT_BRIGHTNESS, HandleNativeWindowSetSdrWhitePointBrightness},
     {SET_DESIRED_PRESENT_TIMESTAMP, HandleNativeWindowSetDesiredPresentTimestamp},
     {OH_NATIVEWINDOW_SET_DMABUFFER_NAME, HandleNativeWindowSetDmaBufferName},
+    {OH_NATIVEWINDOW_SET_SCREEN_INFO, HandleNativeWindowSetScreenInfo},
+    {OH_NATIVEWINDOW_GET_SCREEN_INFO, HandleNativeWindowGetScreenInfo},
 };
 
 static int32_t InternalHandleNativeWindowOpt(OHNativeWindow *window, int code, va_list args)

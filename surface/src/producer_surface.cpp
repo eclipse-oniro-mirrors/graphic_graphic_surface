@@ -1210,6 +1210,26 @@ GSError ProducerSurface::GetVideoDimensionType(VideoDimType &videoDimType)
     return producer_->GetVideoDimensionType(videoDimType);
 }
 
+GSError ProducerSurface::SetScreenInfo(const Rect &currentFrameRect, const Rect &originalRect, float angle)
+{
+    if (producer_ == nullptr || currentFrameRect.w < 0 || currentFrameRect.h < 0 ||
+        originalRect.w < 0 || originalRect.h < 0) {
+        BLOGE("SetScreenInfo failed, invalid rect, currentFrameRect w: %{public}d, h: %{public}d, "
+            "originalRect w: %{public}d, h: %{public}d, uniqueId: %{public}" PRIu64 ".",
+            currentFrameRect.w, currentFrameRect.h, originalRect.w, originalRect.h, queueId_);
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    return producer_->SetScreenInfo(currentFrameRect, originalRect, angle);
+}
+
+GSError ProducerSurface::GetScreenInfo(Rect &currentFrameRect, Rect &originalRect, float &angle)
+{
+    if (producer_ == nullptr) {
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    return producer_->GetScreenInfo(currentFrameRect, originalRect, angle);
+}
+
 void ProducerSurface::SetBufferHold(bool hold)
 {
     if (producer_ == nullptr) {
