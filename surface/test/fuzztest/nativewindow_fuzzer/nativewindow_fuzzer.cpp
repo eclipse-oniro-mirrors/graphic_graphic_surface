@@ -537,7 +537,8 @@ void NativeWindowFuzzTestScreenInfo(OHNativeWindow *nativeWindow, FuzzedDataProv
         &currentFrameRectGet, &originalRectGet, &angleGet);
 }
 
-void NativeWindowFuzzTestGetScreenInfo(OHNativeWindow *nativeWindow, sptr<OHOS::IConsumerSurface> &cSurface, FuzzedDataProvider& fdp)
+void NativeWindowFuzzTestGetScreenInfo(
+    OHNativeWindow *nativeWindow, sptr<OHOS::IConsumerSurface> &cSurface, FuzzedDataProvider& fdp)
 {
     OH_NativeWindow_ScreenInfoRect currentFrameRect = {0, 0, 0, 0};
     currentFrameRect.x = fdp.ConsumeIntegralInRange<int32_t>(0, SCREEN_TEST_SIZE_MAX);
