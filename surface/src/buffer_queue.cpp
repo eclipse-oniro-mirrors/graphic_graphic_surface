@@ -3380,9 +3380,11 @@ void BufferQueue::CleanReleasedBuffersLocked(std::unique_lock<std::mutex> &lock,
     isAllocatingBufferCon_.wait(lock, [this]() { return !isAllocatingBuffer_; });
     for (auto it = freeList_.begin(); it != freeList_.end();) {
         auto sequence = *it;
-        if (sequence == lastFlusedSequence_ || sequence == acquireLastFlushedBufSequence_) {
-            ++it;
-            continue;
+        if (sequence == lastFlusedSequence_) {
+            lastFlusedSequence_ = 0;
+        }
+        if (sequence == acquireLastFlushedBufSequence_) {
+            acquireLastFlushedBufSequence_ = INVALID_SEQUENCE;
         }
         cleanedSeqNums.push_back(sequence);
         MarkBufferReclaimableByIdLocked(sequence);
