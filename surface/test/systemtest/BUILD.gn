@@ -49,7 +49,7 @@ ohos_unittest("native_window_buffer_test_st") {
     "selinux_adapter:librestorecon",
     "samgr:samgr_proxy",
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
     "bounds_checking_function:libsec_shared",
   ]
@@ -97,7 +97,7 @@ ohos_unittest("surface_ipc_test_st") {
     "selinux_adapter:librestorecon",
     "samgr:samgr_proxy",
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
   ]
   sanitize = {
@@ -122,7 +122,7 @@ ohos_unittest("native_window_clean_cache_test_st") {
     "selinux_adapter:librestorecon",
     "samgr:samgr_proxy",
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
   ]
   sanitize = {
@@ -146,7 +146,7 @@ ohos_unittest("surface_ipc_with_connect_strictly_test_st") {
     "selinux_adapter:librestorecon",
     "samgr:samgr_proxy",
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
   ]
   sanitize = {
@@ -170,7 +170,7 @@ ohos_unittest("surface_batch_opt_with_connect_strictly_test_st") {
     "selinux_adapter:librestorecon",
     "samgr:samgr_proxy",
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
   ]
   sanitize = {
@@ -209,7 +209,7 @@ ohos_static_library("surface_system_test_common") {
 
   external_deps = [
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
     "c_utils:utils",
     "eventhandler:libeventhandler",

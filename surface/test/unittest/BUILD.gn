@@ -126,7 +126,7 @@ ohos_unittest("buffer_client_producer_remote_test") {
     "samgr:samgr_proxy",
     "ipc:ipc_single",
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
     "hilog:libhilog",
   ]
@@ -168,7 +168,7 @@ ohos_unittest("buffer_queue_producer_remote_test") {
     "samgr:samgr_proxy",
     "ipc:ipc_single",
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
     "hilog:libhilog",
   ]
@@ -491,7 +491,7 @@ ohos_static_library("mock_dlfcn") {
 
   external_deps = [
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
     "c_utils:utils",
     "hilog:libhilog",
@@ -520,7 +520,7 @@ ohos_static_library("surface_test_common") {
 
   external_deps = [
     "access_token:libaccesstoken_sdk",
-    "access_token:libnativetoken",
+    "access_token:libnativetoken_shared",
     "access_token:libtoken_setproc",
     "c_utils:utils",
     "hilog:libhilog",

@@ -4001,4 +4001,55 @@ HWTEST_F(BufferQueueTest, ScreenInfo003, TestSize.Level0)
     ret = AcquireAndCheckScreenInfo(bq, currentFrameRectB, originalRectB, 90.0f);
     ASSERT_EQ(ret, GSERROR_OK);
 }
+
+/*
+ * Function: CleanReleasedBuffers
+ * Type: Function
+ * Rank: Important(2)
+ * EnvConditions: N/A
+ * CaseDescription: 1. request, flush, acquire, release buffer
+ *                  2. call AcquireLastFlushedBuffer to record acquireLastFlushedBufSequence_
+ *                  3. call CleanReleasedBuffers and check acquireLastFlushedBufSequence_ is reset
+ *                  4. call ReleaseLastFlushedBuffer and check it fails because sequence is invalid
+ */
+HWTEST_F(BufferQueueTest, CleanReleasedBuffers005, TestSize.Level0)
+{
+    bq->CleanCache(false, nullptr);
+    bq->acquireLastFlushedBufSequence_ = 0xFFFFFFFFu;
+    ASSERT_EQ(bq->SetQueueSize(3), GSERROR_OK);
+
+    IBufferProducer::RequestBufferReturnValue retval;
+    GSError ret = bq->RequestBuffer(requestConfig, bedata, retval);
+    ASSERT_EQ(ret, GSERROR_OK);
+    uint32_t sequence = retval.sequence;
+
+    sptr<SyncFence> acquireFence = SyncFence::INVALID_FENCE;
+    ret = bq->FlushBuffer(sequence, bedata, acquireFence, flushConfig);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    sptr<SurfaceBuffer> buffer;
+    sptr<SyncFence> releaseFence = SyncFence::INVALID_FENCE;
+    int64_t timestamp = 0;
+    std::vector<Rect> damages;
+    ret = bq->AcquireBuffer(buffer, releaseFence, timestamp, damages);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    ret = bq->ReleaseBuffer(buffer, releaseFence);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    sptr<SurfaceBuffer> lastFlushedBuffer;
+    sptr<SyncFence> lastFlushedFence;
+    float matrix[16] = {};
+    ret = bq->AcquireLastFlushedBuffer(lastFlushedBuffer, lastFlushedFence, matrix, 16, false);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_EQ(bq->acquireLastFlushedBufSequence_, sequence);
+
+    std::vector<uint32_t> cleanedSeqNums;
+    ret = bq->CleanReleasedBuffers(cleanedSeqNums);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_EQ(cleanedSeqNums.size(), 1u);
+    ASSERT_EQ(cleanedSeqNums[0], sequence);
+    ASSERT_EQ(bq->acquireLastFlushedBufSequence_, 0xFFFFFFFFu);
+    ASSERT_EQ(bq->ReleaseLastFlushedBuffer(sequence), SURFACE_ERROR_BUFFER_STATE_INVALID);
+}
 } // namespace OHOS::Rosen
