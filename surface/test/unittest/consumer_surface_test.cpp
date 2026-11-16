@@ -3057,4 +3057,45 @@ HWTEST_F(ConsumerSurfaceTest, ScreenInfo002, TestSize.Level0)
     ret = surface_->GetScreenInfo(currentFrameRectGet, originalRectGet, angleGet);
     ASSERT_EQ(ret, OHOS::GSERROR_INVALID_ARGUMENTS);
 }
+
+/*
+* Function: AcquireBufferForTunnel
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call AcquireBufferForTunnel with null consumer
+*                  2. request and flush buffer, call AcquireBufferForTunnel
+*                  3. check ret and acquired buffer
+*/
+HWTEST_F(ConsumerSurfaceTest, AcquireBufferForTunnel001, TestSize.Level0)
+{
+    IConsumerSurface::AcquireBufferReturnValue returnValue;
+    GSError ret = surface_->AcquireBufferForTunnel(returnValue, 0, false);
+    ASSERT_EQ(ret, OHOS::GSERROR_INVALID_ARGUMENTS);
+
+    sptr<IConsumerSurface> consumer = IConsumerSurface::Create();
+    ASSERT_NE(consumer, nullptr);
+    sptr<IBufferConsumerListener> listener = new BufferConsumerListener();
+    ret = consumer->RegisterConsumerListener(listener);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    auto p = consumer->GetProducer();
+    sptr<Surface> producer = Surface::CreateSurfaceAsProducer(p);
+    ASSERT_NE(producer, nullptr);
+
+    sptr<SurfaceBuffer> buffer;
+    int releaseFence = -1;
+    ret = producer->RequestBuffer(buffer, releaseFence, requestConfig);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    ASSERT_NE(buffer, nullptr);
+
+    ret = producer->FlushBuffer(buffer, SyncFence::INVALID_FENCE, flushConfigWithDamages);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+
+    ret = consumer->AcquireBufferForTunnel(returnValue, 0, false);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+    ASSERT_NE(returnValue.buffer, nullptr);
+
+    ret = consumer->ReleaseBuffer(returnValue.buffer, returnValue.fence);
+    ASSERT_EQ(ret, OHOS::GSERROR_OK);
+}
 }

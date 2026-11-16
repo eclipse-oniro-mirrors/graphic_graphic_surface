@@ -4052,4 +4052,152 @@ HWTEST_F(BufferQueueTest, CleanReleasedBuffers005, TestSize.Level0)
     ASSERT_EQ(bq->acquireLastFlushedBufSequence_, 0xFFFFFFFFu);
     ASSERT_EQ(bq->ReleaseLastFlushedBuffer(sequence), SURFACE_ERROR_BUFFER_STATE_INVALID);
 }
+
+/*
+* Function: AcquireBufferForTunnel
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. request and flush buffer
+*                  2. call AcquireBufferForTunnel with non-positive expectPresentTimestamp
+*                  3. check ret and buffer
+*/
+HWTEST_F(BufferQueueTest, AcquireBufferForTunnel001, TestSize.Level0)
+{
+    ASSERT_EQ(bq->SetQueueSize(3), GSERROR_OK);
+
+    IBufferProducer::RequestBufferReturnValue retval;
+    GSError ret = bq->RequestBuffer(requestConfig, bedata, retval);
+    ASSERT_EQ(ret, GSERROR_OK);
+    uint32_t sequence = retval.sequence;
+
+    sptr<SyncFence> acquireFence = SyncFence::INVALID_FENCE;
+    ret = bq->FlushBuffer(sequence, bedata, acquireFence, flushConfig);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    IConsumerSurface::AcquireBufferReturnValue returnValue;
+    ret = bq->AcquireBufferForTunnel(returnValue, 0, false);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_NE(returnValue.buffer, nullptr);
+    ASSERT_EQ(returnValue.buffer->GetSeqNum(), sequence);
+
+    ret = bq->ReleaseBuffer(returnValue.buffer, returnValue.fence);
+    ASSERT_EQ(ret, GSERROR_OK);
+}
+
+/*
+* Function: AcquireBufferForTunnel
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. request and flush buffer with explicit desiredPresentTimestamp
+*                  2. call AcquireBufferForTunnel with positive expectPresentTimestamp
+*                  3. check ret and buffer
+*/
+HWTEST_F(BufferQueueTest, AcquireBufferForTunnel002, TestSize.Level0)
+{
+    static const int64_t oneSecondNs = 1000000000;
+
+    ASSERT_EQ(bq->SetQueueSize(3), GSERROR_OK);
+
+    int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    IBufferProducer::RequestBufferReturnValue retval;
+    GSError ret = bq->RequestBuffer(requestConfig, bedata, retval);
+    ASSERT_EQ(ret, GSERROR_OK);
+    uint32_t sequence = retval.sequence;
+
+    BufferFlushConfigWithDamages tunnelFlushConfig = flushConfig;
+    tunnelFlushConfig.desiredPresentTimestamp = now;
+    sptr<SyncFence> acquireFence = SyncFence::INVALID_FENCE;
+    ret = bq->FlushBuffer(sequence, bedata, acquireFence, tunnelFlushConfig);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    IConsumerSurface::AcquireBufferReturnValue returnValue;
+    ret = bq->AcquireBufferForTunnel(returnValue, now + oneSecondNs, false);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_NE(returnValue.buffer, nullptr);
+    ASSERT_EQ(returnValue.buffer->GetSeqNum(), sequence);
+
+    ret = bq->ReleaseBuffer(returnValue.buffer, returnValue.fence);
+    ASSERT_EQ(ret, GSERROR_OK);
+}
+
+/*
+* Function: FlushBuffer tunnel pendingBufferNum
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. set game tunnel layer info
+*                  2. request and flush one buffer, then acquire it
+*                  3. request and flush another buffer after acquire
+*                  4. check pending dirtyList size and FlushBuffer ret
+*/
+HWTEST_F(BufferQueueTest, FlushBufferTunnelPendingBufferNum001, TestSize.Level0)
+{
+    ASSERT_EQ(bq->SetQueueSize(3), GSERROR_OK);
+
+    TunnelLayerInfo info;
+    info.tunnelTypeMask = TunnelTypeMask::TUNNEL_TYPE_GAME;
+    GSError ret = bq->SetTunnelLayerInfo(info);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_NE(bq->tunnelLayerState_.tunnelLayerId, 0u);
+
+    IBufferProducer::RequestBufferReturnValue retval;
+    ret = bq->RequestBuffer(requestConfig, bedata, retval);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    sptr<SyncFence> acquireFence = SyncFence::INVALID_FENCE;
+    ret = bq->FlushBuffer(retval.sequence, bedata, acquireFence, flushConfig);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    sptr<SurfaceBuffer> buffer;
+    sptr<SyncFence> fence = SyncFence::INVALID_FENCE;
+    ret = bq->AcquireBuffer(buffer, fence, timestamp, damages);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    IBufferProducer::RequestBufferReturnValue retval2;
+    ret = bq->RequestBuffer(requestConfig, bedata, retval2);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    ret = bq->FlushBuffer(retval2.sequence, bedata, acquireFence, flushConfig);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_EQ(bq->dirtyList_.size(), 1u);
+
+    IConsumerSurface::AcquireBufferReturnValue returnValue;
+    ret = bq->AcquireBufferForTunnel(returnValue, 0, false);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_NE(returnValue.buffer, nullptr);
+    ASSERT_EQ(returnValue.buffer->GetSeqNum(), retval2.sequence);
+
+    ret = bq->ReleaseBuffer(buffer, fence);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ret = bq->ReleaseBuffer(returnValue.buffer, returnValue.fence);
+    ASSERT_EQ(ret, GSERROR_OK);
+}
+
+/*
+* Function: SetTunnelLayerInfo and GetTunnelLayerInfo
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetTunnelLayerInfo with TUNNEL_TYPE_GAME
+*                  2. call GetTunnelLayerInfo and check tunnelLayerId and property
+*/
+HWTEST_F(BufferQueueTest, TunnelLayerInfo001, TestSize.Level0)
+{
+    TunnelLayerInfo info;
+    info.tunnelTypeMask = TunnelTypeMask::TUNNEL_TYPE_GAME;
+    GSError ret = bq->SetTunnelLayerInfo(info);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    TunnelLayerState state;
+    ret = bq->GetTunnelLayerInfo(state);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_EQ(state.tunnelLayerInfo.tunnelTypeMask, TunnelTypeMask::TUNNEL_TYPE_GAME);
+    ASSERT_EQ(state.tunnelLayerId, bq->GetUniqueId());
+    ASSERT_EQ(state.property, static_cast<TunnelLayerProperty>(
+        TUNNEL_PROP_BUFFER_ADDR | TUNNEL_PROP_WITH_RELEASE_FENCE));
+}
 } // namespace OHOS::Rosen

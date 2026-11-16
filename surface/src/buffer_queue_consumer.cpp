@@ -49,6 +49,15 @@ GSError BufferQueueConsumer::AcquireBuffer(IConsumerSurface::AcquireBufferReturn
     return bufferQueue_->AcquireBuffer(returnValue, expectPresentTimestamp, isUsingAutoTimestamp);
 }
 
+GSError BufferQueueConsumer::AcquireBufferForTunnel(
+    IConsumerSurface::AcquireBufferReturnValue& returnValue, int64_t expectPresentTimestamp, bool isUsingAutoTimestamp)
+{
+    if (bufferQueue_ == nullptr) {
+        return SURFACE_ERROR_UNKOWN;
+    }
+    return bufferQueue_->AcquireBufferForTunnel(returnValue, expectPresentTimestamp, isUsingAutoTimestamp);
+}
+
 GSError BufferQueueConsumer::ReleaseBuffer(sptr<SurfaceBuffer>& buffer, const sptr<SyncFence>& fence)
 {
     if (bufferQueue_ == nullptr) {

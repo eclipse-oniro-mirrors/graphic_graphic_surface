@@ -794,6 +794,13 @@ public:
 
     GSError SetPermissionRules(sptr<ISurfacePermission>& permission) override;
 
+    /**
+     * @brief Acquire buffer for the tunnel direct-commit path; skips the FrameReport
+     * acquire-time report inside BufferQueue (reported by the tunnel caller after commit).
+     */
+    GSError AcquireBufferForTunnel(AcquireBufferReturnValue& returnValue, int64_t expectPresentTimestamp,
+                                   bool isUsingAutoTimestamp) override;
+
 private:
     std::map<std::string, std::string> userData_;
     sptr<BufferQueueProducer> producer_ = nullptr;

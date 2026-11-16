@@ -64,6 +64,7 @@ void FrameReportTest::SetUp()
     Rosen::FrameReport::GetInstance().presentFenceSysTime_.store(0);
     Rosen::FrameReport::GetInstance().presentFenceSequence_.store(0);
     Rosen::FrameReport::GetInstance().lastReleaseSysTime_.store(0);
+    Rosen::FrameReport::GetInstance().vsyncPeriodNs_.store(0);
 }
 
 void FrameReportTest::TearDown() {}
@@ -709,6 +710,98 @@ HWTEST_F(FrameReportTest, ReportHwsched001, Function | MediumTest | Level2)
     // cleanup
     fr.SetGameScene(FRT_GAME_PID, FRT_GAME_BACKGROUND);
     fr.SetGameScene(FRT_HWSCHED_PID, FRT_SCENE_BACKGROUND);
+}
+
+/*
+* Function: SetVsyncPeriodNs
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call SetVsyncPeriodNs
+*                  2. check vsyncPeriodNs_ is set correctly
+*/
+HWTEST_F(FrameReportTest, SetVsyncPeriodNs001, Function | MediumTest | Level2)
+{
+    Rosen::FrameReport::GetInstance().SetVsyncPeriodNs(FRT_GAME_BUFFER_TIME);
+    ASSERT_TRUE(Rosen::FrameReport::GetInstance().vsyncPeriodNs_.load() == FRT_GAME_BUFFER_TIME);
+}
+
+/*
+* Function: AddAcquireBufferTunnelOffset
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call AddAcquireBufferTunnelOffset without acquire buffer sys time
+*                  2. check acquireBufferSysTime_ keeps zero
+*/
+HWTEST_F(FrameReportTest, AddAcquireBufferTunnelOffset001, Function | MediumTest | Level2)
+{
+    auto& fr = Rosen::FrameReport::GetInstance();
+    fr.acquireBufferSysTime_.store(0);
+    fr.AddAcquireBufferTunnelOffset();
+    ASSERT_TRUE(fr.acquireBufferSysTime_.load() == 0);
+}
+
+/*
+* Function: AddAcquireBufferTunnelOffset
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. set acquire buffer sys time with zero vsync period
+*                  2. call AddAcquireBufferTunnelOffset
+*                  3. check acquireBufferSysTime_ is not changed
+*/
+HWTEST_F(FrameReportTest, AddAcquireBufferTunnelOffset002, Function | MediumTest | Level2)
+{
+    auto& fr = Rosen::FrameReport::GetInstance();
+    fr.acquireBufferSysTime_.store(FRT_GAME_BUFFER_TIME);
+    fr.SetVsyncPeriodNs(0);
+    fr.AddAcquireBufferTunnelOffset();
+    ASSERT_TRUE(fr.acquireBufferSysTime_.load() == FRT_GAME_BUFFER_TIME);
+}
+
+/*
+* Function: AddAcquireBufferTunnelOffset
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. set acquire buffer sys time and vsync period
+*                  2. call AddAcquireBufferTunnelOffset
+*                  3. check acquireBufferSysTime_ is increased by period / offset divisor
+*/
+HWTEST_F(FrameReportTest, AddAcquireBufferTunnelOffset003, Function | MediumTest | Level2)
+{
+    auto& fr = Rosen::FrameReport::GetInstance();
+    fr.acquireBufferSysTime_.store(FRT_GAME_BUFFER_TIME);
+    fr.SetVsyncPeriodNs(FRT_GAME_BUFFER_TIME);
+
+    fr.AddAcquireBufferTunnelOffset();
+
+    int64_t expectedTime = FRT_GAME_BUFFER_TIME + FRT_GAME_BUFFER_TIME / FR_TUNNEL_ACQUIRE_OFFSET_DIVISOR;
+    ASSERT_TRUE(fr.acquireBufferSysTime_.load() == expectedTime);
+}
+
+/*
+* Function: AddAcquireBufferTunnelOffset
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. set acquire buffer sys time with huge vsync period
+*                  2. call AddAcquireBufferTunnelOffset
+*                  3. check acquireBufferSysTime_ is increased by period / offset divisor without overflow
+*/
+HWTEST_F(FrameReportTest, AddAcquireBufferTunnelOffset004, Function | MediumTest | Level2)
+{
+    static const int64_t FRT_HUGE_VSYNC_PERIOD = INT64_MAX;
+
+    auto& fr = Rosen::FrameReport::GetInstance();
+    fr.acquireBufferSysTime_.store(1);
+    fr.SetVsyncPeriodNs(FRT_HUGE_VSYNC_PERIOD);
+
+    fr.AddAcquireBufferTunnelOffset();
+
+    int64_t expectedTime = 1 + FRT_HUGE_VSYNC_PERIOD / FR_TUNNEL_ACQUIRE_OFFSET_DIVISOR;
+    ASSERT_TRUE(fr.acquireBufferSysTime_.load() == expectedTime);
 }
 
 } // namespace OHOS::Rosen

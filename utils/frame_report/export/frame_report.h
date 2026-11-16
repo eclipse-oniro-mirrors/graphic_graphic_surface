@@ -21,6 +21,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <shared_mutex>
@@ -31,6 +32,7 @@ namespace Rosen {
 using NotifyFrameInfoFunc = bool(*)(int32_t, const std::string&, int64_t, const std::string&, uint64_t);
 constexpr int32_t FR_DEFAULT_PID = 0;
 constexpr uint64_t FR_DEFAULT_UNIQUEID = 0;
+constexpr int32_t FR_TUNNEL_ACQUIRE_OFFSET_DIVISOR = 8;
 
 class FrameReport {
 public:
@@ -44,8 +46,10 @@ public:
     void SetDequeueBufferTime(const std::string& layerName, int64_t dequeueBufferTime);
     void SetQueueBufferTime(uint64_t uniqueId, const std::string& layerName, int64_t queueBufferTime);
     void SetFlushBufferSequence(uint32_t sequence);
+    void SetVsyncPeriodNs(int64_t period);
     void SetAcquireBufferSysTime();
     void SetAcquireBufferSeqWithUniqueId(uint64_t uniqueId, uint32_t sequence);
+    void AddAcquireBufferTunnelOffset();
     void SetPresentTimeWithUniqueId(
         uint64_t uniqueId, const sptr<SyncFence>& preBufferReleasedFence, uint32_t sequence);
     void SetPendingBufferNum(uint64_t uniqueId, const std::string& layerName, int32_t pendingBufferNum);
@@ -78,6 +82,7 @@ private:
     std::atomic<int64_t> lastReleaseSysTime_ = 0;
     std::atomic<uint32_t> sceneType_ = FR_SCENE_NONE;
     std::unique_ptr<SceneReporter> hwschedReporter_;
+    std::atomic<int64_t> vsyncPeriodNs_ = 0;
 
     bool isGameSoLoaded_ = false;
     void* gameSoHandle_ = nullptr;
