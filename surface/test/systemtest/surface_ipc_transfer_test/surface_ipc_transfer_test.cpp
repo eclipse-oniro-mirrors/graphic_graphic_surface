@@ -71,7 +71,6 @@ void SurfaceIPCTransferTest::SetUpTestCase()
         .usage = BUFFER_USAGE_CPU_READ | BUFFER_USAGE_CPU_WRITE | BUFFER_USAGE_MEM_DMA,
         .timeout = 0,
     };
-    // Branch3 uses a small config to trigger server-side realloc: when the config differs from the previous frame, ReuseBuffer reallocates
     smallConfig = requestConfig;
     smallConfig.width = 0x40;
     smallConfig.height = 0x40;
@@ -106,7 +105,6 @@ GSError SurfaceIPCTransferTest::SetData(sptr<SurfaceBuffer> &buffer, sptr<Surfac
     return ret;
 }
 
-// Parent side: verify ExtraData and tunnel handle carried by the acquired buffer round-trip across processes unchanged
 bool SurfaceIPCTransferTest::GetData(sptr<SurfaceBuffer> &buffer)
 {
     int32_t int32;
@@ -148,7 +146,6 @@ GSError SurfaceIPCTransferTest::FillPatternData(sptr<SurfaceBuffer> &buffer, uin
     return buffer->FlushCache();
 }
 
-// Parent side: verify pattern data word by word after InvalidateCache (zero-copy sharing of the same DMA memory with the child)
 bool SurfaceIPCTransferTest::CheckPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed)
 {
     if (buffer == nullptr) {
@@ -213,7 +210,7 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
 
     int64_t data;
     read(pipeMain[0], &data, sizeof(data));
-    // The start message carries the queue uniqueId: verify the queue obtained via IPC is the same one the parent created
+
     uint64_t uniqueId = static_cast<uint64_t>(data);
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
@@ -232,7 +229,7 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
-    // Verify the buffer received cross-process: fd has been duplicated into this process, attributes match the request config
+
     if (buffer == nullptr || buffer->GetFileDescriptor() < 0 ||
         buffer->GetWidth() != requestConfig.width || buffer->GetHeight() != requestConfig.height ||
         buffer->GetFormat() != requestConfig.format) {
@@ -255,9 +252,9 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
     data = sRet;
     write(pipeChild[1], &data, sizeof(data));
-    read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish Branch1 consumption verification
+    read(pipeMain[0], &data, sizeof(data)); 
 
-    // ---------------- Branch2: multi-cycle RequestBuffer/FlushBuffer loop ----------------
+    // ---------------- Branch2: multi-cycle RequestBuffer/FlushBuffer loop ------
     uint32_t firstSequence = 0;
     for (uint32_t i = 0; i < cycleTimes; i++) {
         buffer = nullptr;
@@ -287,10 +284,10 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
         sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
         data = sRet;
         write(pipeChild[1], &data, sizeof(data));
-        read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish consuming this cycle before the next one
+        read(pipeMain[0], &data, sizeof(data));
     }
 
-    // ---------------- Branch3: request config change triggers server-side realloc ----------------
+    // ------ Branch3: request config change triggers server-side realloc ------
     buffer = nullptr;
     sRet = pSurface->RequestBuffer(buffer, releaseFence, smallConfig);
     if (sRet != OHOS::GSERROR_OK) {
@@ -312,8 +309,7 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
     data = sRet;
     write(pipeChild[1], &data, sizeof(data));
-    read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish Branch3 consumption verification
-
+    read(pipeMain[0], &data, sizeof(data)); 
     pSurface->UnRegisterReleaseListener();
     close(pipeMain[0]);
     close(pipeMain[1]);
@@ -372,7 +368,6 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
     auto sam = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->AddSystemAbility(ipcSystemAbilityID, producer->AsObject());
 
-    // The start message carries the queue uniqueId for the child to verify it got the same queue
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
@@ -396,7 +391,6 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
         sRet = cSurface->ReleaseBuffer(buffer, -1);
         EXPECT_EQ(sRet, OHOS::GSERROR_OK);
 
-        // Negative: the child already owns the producer connection; a second local producer surface in this process gets its request rejected by PID gating
         auto pSurfaceSecond = Surface::CreateSurfaceAsProducer(producer);
         sptr<SurfaceBuffer> bufferSecond = nullptr;
         int32_t releaseFence = -1;
@@ -406,7 +400,7 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
     }
     write(pipeMain[1], &data, sizeof(data));
 
-    // ---------------- Branch2: parent-side consumption verification, 3 lockstep cycles ----------------
+    // --------- Branch2: parent-side consumption verification, 3 lockstep cycles ---
     for (uint32_t i = 0; i < cycleTimes; i++) {
         data = ReadChildReport();
         EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
@@ -423,7 +417,7 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
         write(pipeMain[1], &data, sizeof(data));
     }
 
-    // ---------------- Branch3: parent-side consumption verification, small-size frame after realloc ----------------
+    // ------ Branch3: parent-side consumption verification, small-size frame after realloc ---
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     {

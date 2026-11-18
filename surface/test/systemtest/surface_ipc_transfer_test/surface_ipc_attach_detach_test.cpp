@@ -104,7 +104,6 @@ GSError SurfaceIPCAttachDetachTest::FillPatternData(sptr<SurfaceBuffer> &buffer,
     return buffer->FlushCache();
 }
 
-// Parent side: verify pattern data word by word after InvalidateCache (zero-copy sharing of the same DMA memory with the child)
 bool SurfaceIPCAttachDetachTest::CheckPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed)
 {
     if (buffer == nullptr) {
@@ -169,7 +168,6 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
 
     int64_t data;
     read(pipeMain[0], &data, sizeof(data));
-    // The start message carries the queue uniqueId: verify the queue obtained via IPC is the same one the parent created
     uint64_t uniqueId = static_cast<uint64_t>(data);
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
@@ -179,7 +177,6 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
         exit(0);
     }
 
-    // -------- Branch1: AttachBufferToQueue/DetachBufferFromQueue cross-process state machine --------
     sptr<SurfaceBuffer> buffer = nullptr;
     int32_t releaseFence = -1;
     auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
@@ -210,7 +207,6 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
-    // Attach back to the queue: same sequence number, state returns to REQUESTED, and the frame can be submitted normally
     sRet = pSurface->AttachBufferToQueue(buffer);
     if (sRet != OHOS::GSERROR_OK) {
         data = sRet;
@@ -292,7 +288,8 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     write(pipeChild[1], &data, sizeof(data));
     read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish consuming the 3 frames
 
-    // Reuse verification: after buffers return to the free queue, requesting again should reuse the buffers with the original sequence numbers (no server reallocation)
+    // Reuse verification: after buffers return to the free queue, 
+    // requesting again should reuse the buffers with the original sequence numbers (no server reallocation)
     for (uint32_t i = 0; i < queueSize; i++) {
         buffer = nullptr;
         sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
@@ -384,11 +381,9 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     auto sam = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->AddSystemAbility(ipcSystemAbilityID, producer->AsObject());
 
-    // The start message carries the queue uniqueId for the child to verify it got the same queue
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
-    // ---------------- Branch1: parent-side consumption verification, the frame submitted after attaching back ----------------
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     {
@@ -405,7 +400,6 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     }
     write(pipeMain[1], &data, sizeof(data));
 
-    // ---------------- Branch2: parent-side consumption verification, the 3 frames attached in batch ----------------
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     for (uint32_t i = 0; i < queueSize; i++) {
@@ -421,7 +415,6 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
         sRet = cSurface->ReleaseBuffer(buffer, -1);
         EXPECT_EQ(sRet, OHOS::GSERROR_OK);
     }
-    // Negative: after all 3 frames are consumed the queue is drained; acquiring again should return GSERROR_NO_BUFFER
     {
         sptr<SurfaceBuffer> buffer = nullptr;
         int32_t fence = -1;
@@ -433,7 +426,6 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     }
     write(pipeMain[1], &data, sizeof(data));
 
-    // Branch2 reuse round: the child only reports the result, nothing for the parent to consume
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     write(pipeMain[1], &data, sizeof(data));
