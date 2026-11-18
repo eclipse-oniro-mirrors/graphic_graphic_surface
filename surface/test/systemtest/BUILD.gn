@@ -30,6 +30,7 @@ group("unittest") {
       ":surface_ipc_with_connect_strictly_test_st",
       "attach_and_detach_buffer_test:systemtest",
       "buffer_with_present_timestamp_test:systemtest",
+      "surface_ipc_transfer_test:systemtest",
     ]
   }
 }
