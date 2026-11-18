@@ -34,10 +34,9 @@ namespace {
 constexpr uint32_t ATTACH_PATTERN_SEED = 0x4A4A0000; // Branch1: frame submitted after attaching back
 constexpr uint32_t BATCH_PATTERN_SEED = 0x52520000;  // Branch2: 3 frames attached in batch (seed+i)
 
-// Composite code reported by the child on verification failure = base + step number. GSError alone
-// cannot tell which step failed; when the parent's EXPECT_EQ(data, GSERROR_OK) fails, subtracting
-// the base from the reported code locates the failing verification step inside the child
-constexpr int64_t CHILD_CHECK_FAILED_BASE = 100000;
+// Child report convention: a failed API call reports its real GSError; an expectation not met
+// (queue identity or sequence mismatch, a negative case not rejected) reports GSERROR_INVALID_OPERATING,
+// so the parent never mistakes a child-side failure for GSERROR_OK.
 } // namespace
 
 class SurfaceIPCAttachDetachTest : public testing::Test, public IBufferConsumerListenerClazz {
@@ -175,7 +174,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
     if (pSurface->GetUniqueId() != uniqueId) {
-        data = CHILD_CHECK_FAILED_BASE + 1;
+        data = GSERROR_INVALID_OPERATING;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
@@ -184,8 +183,8 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     sptr<SurfaceBuffer> buffer = nullptr;
     int32_t releaseFence = -1;
     auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
-    if (sRet != OHOS::GSERROR_OK || buffer == nullptr) {
-        data = (sRet != OHOS::GSERROR_OK) ? sRet : CHILD_CHECK_FAILED_BASE + 11;
+    if (sRet != OHOS::GSERROR_OK) {
+        data = sRet;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
@@ -193,7 +192,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     // Negative: attaching a buffer already cached in the server queue again must be rejected
     sRet = pSurface->AttachBufferToQueue(buffer);
     if (sRet != SURFACE_ERROR_BUFFER_IS_INCACHE) {
-        data = CHILD_CHECK_FAILED_BASE + 12;
+        data = GSERROR_INVALID_OPERATING;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
@@ -207,7 +206,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     // Negative: flushing a detached buffer must be rejected
     sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
     if (sRet != SURFACE_ERROR_BUFFER_NOT_INCACHE) {
-        data = CHILD_CHECK_FAILED_BASE + 13;
+        data = GSERROR_INVALID_OPERATING;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
@@ -219,7 +218,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
         exit(0);
     }
     if (buffer->GetSeqNum() != sequence) {
-        data = CHILD_CHECK_FAILED_BASE + 14;
+        data = GSERROR_INVALID_OPERATING;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
@@ -246,8 +245,8 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     for (uint32_t i = 0; i < queueSize; i++) {
         buffer = nullptr;
         sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
-        if (sRet != OHOS::GSERROR_OK || buffer == nullptr) {
-            data = (sRet != OHOS::GSERROR_OK) ? sRet : CHILD_CHECK_FAILED_BASE + 21;
+        if (sRet != OHOS::GSERROR_OK) {
+            data = sRet;
             write(pipeChild[1], &data, sizeof(data));
             exit(0);
         }
@@ -272,7 +271,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
             exit(0);
         }
         if (buffers[i]->GetSeqNum() != sequences[i]) {
-            data = CHILD_CHECK_FAILED_BASE + 22;
+            data = GSERROR_INVALID_OPERATING;
             write(pipeChild[1], &data, sizeof(data));
             exit(0);
         }
@@ -297,8 +296,8 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     for (uint32_t i = 0; i < queueSize; i++) {
         buffer = nullptr;
         sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
-        if (sRet != OHOS::GSERROR_OK || buffer == nullptr) {
-            data = (sRet != OHOS::GSERROR_OK) ? sRet : CHILD_CHECK_FAILED_BASE + 23;
+        if (sRet != OHOS::GSERROR_OK) {
+            data = sRet;
             write(pipeChild[1], &data, sizeof(data));
             exit(0);
         }
@@ -311,7 +310,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
             }
         }
         if (!isReused) {
-            data = CHILD_CHECK_FAILED_BASE + 24;
+            data = GSERROR_INVALID_OPERATING;
             write(pipeChild[1], &data, sizeof(data));
             exit(0);
         }

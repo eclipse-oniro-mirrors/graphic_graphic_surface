@@ -33,10 +33,9 @@ namespace {
 constexpr uint32_t PATTERN_SEED = 0x5A5A0000;       // Branch1/2: basics and multi-cycle loop
 constexpr uint32_t SMALL_PATTERN_SEED = 0x3C3C0000; // Branch3: small-size buffer after realloc
 
-// Composite code reported by the child on verification failure = base + step number. GSError alone
-// cannot tell which step failed; when the parent's EXPECT_EQ(data, GSERROR_OK) fails, subtracting
-// the base from the reported code locates the failing verification step inside the child
-constexpr int64_t CHILD_CHECK_FAILED_BASE = 100000;
+// Child report convention: a failed API call reports its real GSError; an expectation not met
+// (queue identity, attribute or sequence mismatch) reports GSERROR_INVALID_OPERATING, so the
+// parent never mistakes a child-side failure for GSERROR_OK.
 } // namespace
 
 class SurfaceIPCTransferTest : public testing::Test, public IBufferConsumerListenerClazz {
@@ -219,7 +218,7 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
     if (pSurface->GetUniqueId() != uniqueId) {
-        data = CHILD_CHECK_FAILED_BASE + 1;
+        data = GSERROR_INVALID_OPERATING;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
@@ -237,7 +236,7 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     if (buffer == nullptr || buffer->GetFileDescriptor() < 0 ||
         buffer->GetWidth() != requestConfig.width || buffer->GetHeight() != requestConfig.height ||
         buffer->GetFormat() != requestConfig.format) {
-        data = CHILD_CHECK_FAILED_BASE + 11;
+        data = GSERROR_INVALID_OPERATING;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
@@ -263,8 +262,8 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     for (uint32_t i = 0; i < cycleTimes; i++) {
         buffer = nullptr;
         sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
-        if (sRet != OHOS::GSERROR_OK || buffer == nullptr) {
-            data = (sRet != OHOS::GSERROR_OK) ? sRet : CHILD_CHECK_FAILED_BASE + 21;
+        if (sRet != OHOS::GSERROR_OK) {
+            data = sRet;
             write(pipeChild[1], &data, sizeof(data));
             exit(0);
         }
@@ -274,7 +273,7 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
         if (i == 0) {
             firstSequence = buffer->GetSeqNum();
         } else if (buffer->GetSeqNum() != firstSequence) {
-            data = CHILD_CHECK_FAILED_BASE + 22;
+            data = GSERROR_INVALID_OPERATING;
             write(pipeChild[1], &data, sizeof(data));
             exit(0);
         }
@@ -294,9 +293,13 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     // ---------------- Branch3: request config change triggers server-side realloc ----------------
     buffer = nullptr;
     sRet = pSurface->RequestBuffer(buffer, releaseFence, smallConfig);
-    if (sRet != OHOS::GSERROR_OK || buffer == nullptr ||
-        buffer->GetWidth() != smallConfig.width || buffer->GetHeight() != smallConfig.height) {
-        data = (sRet != OHOS::GSERROR_OK) ? sRet : CHILD_CHECK_FAILED_BASE + 31;
+    if (sRet != OHOS::GSERROR_OK) {
+        data = sRet;
+        write(pipeChild[1], &data, sizeof(data));
+        exit(0);
+    }
+    if (buffer->GetWidth() != smallConfig.width || buffer->GetHeight() != smallConfig.height) {
+        data = GSERROR_INVALID_OPERATING;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
