@@ -29,13 +29,14 @@ using namespace testing::ext;
 
 namespace OHOS::Rosen {
 namespace {
-// 各分支特征数据种子：子进程逐字写入 seed+i，父进程 InvalidateCache 后逐字校验，
-// 验证跨进程双方零拷贝共享同一块 DMA 内存
-constexpr uint32_t ATTACH_PATTERN_SEED = 0x4A4A0000; // Branch1：attach 归队后提交的一帧
-constexpr uint32_t BATCH_PATTERN_SEED = 0x52520000;  // Branch2：批量 attach 的 3 帧（seed+i）
+// Pattern data seed for each branch: the child writes seed+i word by word and the parent verifies
+// word by word after InvalidateCache, proving both processes zero-copy share the same DMA memory
+constexpr uint32_t ATTACH_PATTERN_SEED = 0x4A4A0000; // Branch1: frame submitted after attaching back
+constexpr uint32_t BATCH_PATTERN_SEED = 0x52520000;  // Branch2: 3 frames attached in batch (seed+i)
 
-// 子进程校验失败上报的合成码 = 基址 + 步骤号。GSError 本身无法区分是哪一步失败，
-// 父进程 EXPECT_EQ(data, GSERROR_OK) 失败时可用上报码减去基址定位子进程内的校验步骤
+// Composite code reported by the child on verification failure = base + step number. GSError alone
+// cannot tell which step failed; when the parent's EXPECT_EQ(data, GSERROR_OK) fails, subtracting
+// the base from the reported code locates the failing verification step inside the child
 constexpr int64_t CHILD_CHECK_FAILED_BASE = 100000;
 } // namespace
 
@@ -84,8 +85,9 @@ static inline GSError OnBufferRelease(sptr<SurfaceBuffer> &buffer)
     return GSERROR_OK;
 }
 
-// 子进程侧：向跨 IPC 拿到的 buffer 写特征数据。virAddr 是本进程按需 mmap 的独立映射，
-// 写满后 FlushCache 刷出 CPU cache，父进程才能透过自己的映射读到新数据
+// Child side: write pattern data into the buffer obtained via IPC. virAddr is an on-demand mmap-ed
+// mapping owned by this process; FlushCache after filling flushes the CPU cache so the parent can
+// read the new data through its own mapping
 GSError SurfaceIPCAttachDetachTest::FillPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed)
 {
     if (buffer == nullptr) {
@@ -103,7 +105,7 @@ GSError SurfaceIPCAttachDetachTest::FillPatternData(sptr<SurfaceBuffer> &buffer,
     return buffer->FlushCache();
 }
 
-// 父进程侧：InvalidateCache 后逐字校验特征数据（与子进程零拷贝共享同一块 DMA 内存）
+// Parent side: verify pattern data word by word after InvalidateCache (zero-copy sharing of the same DMA memory with the child)
 bool SurfaceIPCAttachDetachTest::CheckPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed)
 {
     if (buffer == nullptr) {
@@ -124,8 +126,8 @@ bool SurfaceIPCAttachDetachTest::CheckPatternData(sptr<SurfaceBuffer> &buffer, u
     return true;
 }
 
-// 父进程侧：读子进程上报。先置 -1 再读，子进程失败提前退出（EOF 读不到数据）时
-// 不会被残留值误判为 GSERROR_OK
+// Parent side: read the child report. Set to -1 before reading so that when the child exits early
+// on failure (EOF, nothing read), a stale value cannot be misjudged as GSERROR_OK
 int64_t SurfaceIPCAttachDetachTest::ReadChildReport()
 {
     int64_t data = -1;
@@ -133,7 +135,7 @@ int64_t SurfaceIPCAttachDetachTest::ReadChildReport()
     return data;
 }
 
-// 子进程侧：轮询 samgr 拉取父进程注册的 producer，包装成本地生产者 surface
+// Child side: poll samgr for the producer registered by the parent, then wrap it as a local producer surface
 sptr<OHOS::Surface> SurfaceIPCAttachDetachTest::CreateSurface()
 {
     sptr<IRemoteObject> robj = nullptr;
@@ -150,15 +152,16 @@ sptr<OHOS::Surface> SurfaceIPCAttachDetachTest::CreateSurface()
     return Surface::CreateSurfaceAsProducer(producer);
 }
 
-// 进程B主体：经 samgr 拿到 producer 后，按 2 个分支驱动 attach/detach 场景。
-// 每个分支完成后写一条 report，等父进程完成消费校验并回 ack 再进入下一分支，
-// 管道读写次数与父进程严格互补（子写 3 / 子读 4，含 start）。
+// Process B main body: after getting the producer via samgr, drive the attach/detach scenarios
+// through 2 branches in order. Each branch writes a report, then waits for the parent to finish
+// consumption verification and reply an ack before entering the next branch; pipe read/write counts
+// are strictly complementary with the parent (child writes 3 / reads 4, including start).
 pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
 {
     pipe(pipeMain);
     pipe(pipeChild);
-    // 忽略 SIGPIPE：子进程失败提前退出后，父进程继续写 ack 会得到 EPIPE，
-    // 以写失败代替进程被信号杀死，让 gtest 正常记录失败
+    // Ignore SIGPIPE: if the child exits early on failure, the parent's subsequent ack writes get
+    // EPIPE; a failed write replaces being killed by the signal, so gtest records the failure normally
     (void)signal(SIGPIPE, SIG_IGN);
     pid_t pid = fork();
     if (pid != 0) {
@@ -167,7 +170,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
 
     int64_t data;
     read(pipeMain[0], &data, sizeof(data));
-    // start 信号携带队列 uniqueId：校验经 IPC 拿到的确实是父进程创建的同一个队列
+    // The start message carries the queue uniqueId: verify the queue obtained via IPC is the same one the parent created
     uint64_t uniqueId = static_cast<uint64_t>(data);
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
@@ -177,7 +180,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
         exit(0);
     }
 
-    // -------- Branch1：AttachBufferToQueue/DetachBufferFromQueue 跨进程状态机 --------
+    // -------- Branch1: AttachBufferToQueue/DetachBufferFromQueue cross-process state machine --------
     sptr<SurfaceBuffer> buffer = nullptr;
     int32_t releaseFence = -1;
     auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
@@ -187,28 +190,28 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
         exit(0);
     }
     uint32_t sequence = buffer->GetSeqNum();
-    // 负向：对已在服务端队列缓存中的 buffer 重复 attach，必须被拒绝
+    // Negative: attaching a buffer already cached in the server queue again must be rejected
     sRet = pSurface->AttachBufferToQueue(buffer);
     if (sRet != SURFACE_ERROR_BUFFER_IS_INCACHE) {
         data = CHILD_CHECK_FAILED_BASE + 12;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
-    // REQUESTED 状态 detach 合法，buffer 离开服务端缓存
+    // Detaching in REQUESTED state is legal; the buffer leaves the server cache
     sRet = pSurface->DetachBufferFromQueue(buffer);
     if (sRet != OHOS::GSERROR_OK) {
         data = sRet;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
-    // 负向：对已脱队的 buffer flush，必须被拒绝
+    // Negative: flushing a detached buffer must be rejected
     sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
     if (sRet != SURFACE_ERROR_BUFFER_NOT_INCACHE) {
         data = CHILD_CHECK_FAILED_BASE + 13;
         write(pipeChild[1], &data, sizeof(data));
         exit(0);
     }
-    // attach 回队列：同序列号，状态回到 REQUESTED，可正常提交一帧
+    // Attach back to the queue: same sequence number, state returns to REQUESTED, and the frame can be submitted normally
     sRet = pSurface->AttachBufferToQueue(buffer);
     if (sRet != OHOS::GSERROR_OK) {
         data = sRet;
@@ -229,9 +232,9 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
     data = sRet;
     write(pipeChild[1], &data, sizeof(data));
-    read(pipeMain[0], &data, sizeof(data)); // 等父进程完成 Branch1 消费校验
+    read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish Branch1 consumption verification
 
-    // -------- Branch2：批量 attach 与服务端 buffer 复用 --------
+    // -------- Branch2: batch attach and server-side buffer reuse --------
     sRet = pSurface->SetQueueSize(queueSize);
     if (sRet != OHOS::GSERROR_OK) {
         data = sRet;
@@ -251,7 +254,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
         buffers.push_back(buffer);
         sequences.push_back(buffer->GetSeqNum());
     }
-    // 全部 detach：服务端队列缓存清空
+    // Detach all: the server queue cache is emptied
     for (uint32_t i = 0; i < queueSize; i++) {
         sRet = pSurface->DetachBufferFromQueue(buffers[i]);
         if (sRet != OHOS::GSERROR_OK) {
@@ -260,7 +263,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
             exit(0);
         }
     }
-    // 逐一 attach 回队（序列号不变）并填充提交
+    // Attach each one back (sequence number unchanged), fill and submit
     for (uint32_t i = 0; i < queueSize; i++) {
         sRet = pSurface->AttachBufferToQueue(buffers[i]);
         if (sRet != OHOS::GSERROR_OK) {
@@ -288,9 +291,9 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     }
     data = OHOS::GSERROR_OK;
     write(pipeChild[1], &data, sizeof(data));
-    read(pipeMain[0], &data, sizeof(data)); // 等父进程完成 3 帧消费
+    read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish consuming the 3 frames
 
-    // 复用验证：buffer 释放回 free 队列后再次 request，应复用原序列号的 buffer（服务端不重新分配）
+    // Reuse verification: after buffers return to the free queue, requesting again should reuse the buffers with the original sequence numbers (no server reallocation)
     for (uint32_t i = 0; i < queueSize; i++) {
         buffer = nullptr;
         sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
@@ -312,7 +315,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
             write(pipeChild[1], &data, sizeof(data));
             exit(0);
         }
-        // CancelBuffer 归还，保持队列状态干净
+        // CancelBuffer returns it, keeping the queue state clean
         sRet = pSurface->CancelBuffer(buffer);
         if (sRet != OHOS::GSERROR_OK) {
             data = sRet;
@@ -322,7 +325,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     }
     data = OHOS::GSERROR_OK;
     write(pipeChild[1], &data, sizeof(data));
-    read(pipeMain[0], &data, sizeof(data)); // 等父进程最终 ack
+    read(pipeMain[0], &data, sizeof(data)); // wait for the parent's final ack
 
     pSurface->UnRegisterReleaseListener();
     close(pipeMain[0]);
@@ -353,8 +356,8 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
 */
 HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
 {
-    // fork 必须先于父进程侧任何 IPC 操作（token 注册、samgr 注册），
-    // 保证子进程继承到干净的 binder 运行时，与 surface_ipc_test.cpp 同款时序
+    // fork must precede any IPC operation on the parent side (token registration, samgr registration),
+    // so the child inherits a clean binder runtime, same ordering as surface_ipc_test.cpp
     auto pid = ChildProcessMain();
     ASSERT_GE(pid, 0);
 
@@ -382,11 +385,11 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     auto sam = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->AddSystemAbility(ipcSystemAbilityID, producer->AsObject());
 
-    // start 信号携带队列 uniqueId，供子进程校验拿到的是同一个队列
+    // The start message carries the queue uniqueId for the child to verify it got the same queue
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
-    // ---------------- Branch1 消费校验：attach 归队后提交的一帧 ----------------
+    // ---------------- Branch1: parent-side consumption verification, the frame submitted after attaching back ----------------
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     {
@@ -403,7 +406,7 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     }
     write(pipeMain[1], &data, sizeof(data));
 
-    // ---------------- Branch2 消费校验：批量 attach 的 3 帧 ----------------
+    // ---------------- Branch2: parent-side consumption verification, the 3 frames attached in batch ----------------
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     for (uint32_t i = 0; i < queueSize; i++) {
@@ -414,12 +417,12 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
         auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
         EXPECT_EQ(sRet, OHOS::GSERROR_OK);
         EXPECT_NE(buffer, nullptr);
-        // dirty 队列按提交顺序出队，逐帧校验各自种子
+        // The dirty queue dequeues in submit order; verify each frame's own seed
         EXPECT_EQ(CheckPatternData(buffer, BATCH_PATTERN_SEED + i), true);
         sRet = cSurface->ReleaseBuffer(buffer, -1);
         EXPECT_EQ(sRet, OHOS::GSERROR_OK);
     }
-    // 负向：3 帧全部消费后队列已排空，再 acquire 应返回 GSERROR_NO_BUFFER
+    // Negative: after all 3 frames are consumed the queue is drained; acquiring again should return GSERROR_NO_BUFFER
     {
         sptr<SurfaceBuffer> buffer = nullptr;
         int32_t fence = -1;
@@ -431,7 +434,7 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     }
     write(pipeMain[1], &data, sizeof(data));
 
-    // Branch2 复用轮：子进程只上报结果，无消费动作
+    // Branch2 reuse round: the child only reports the result, nothing for the parent to consume
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     write(pipeMain[1], &data, sizeof(data));
