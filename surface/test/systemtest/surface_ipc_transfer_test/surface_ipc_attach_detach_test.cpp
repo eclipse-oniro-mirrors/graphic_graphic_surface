@@ -435,19 +435,19 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
-    //  Branch1: parent-side consumption verification, the frame submitted after attaching back 
+    // Branch1: parent-side consumption verification, the frame submitted after attaching back
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     ConsumeAttachedFrame();
     write(pipeMain[1], &data, sizeof(data));
 
-    //  Branch2: parent-side consumption verification, the 3 frames attached in batch 
+    // Branch2: parent-side consumption verification, the 3 frames attached in batch
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     ConsumeBatchFrames();
     write(pipeMain[1], &data, sizeof(data));
 
-    //  Branch3: the child only reports the reuse result, nothing for the parent to consume 
+    // Branch3: the child only reports the reuse result, nothing for the parent to consume
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     write(pipeMain[1], &data, sizeof(data));

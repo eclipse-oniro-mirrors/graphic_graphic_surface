@@ -303,7 +303,7 @@ void SurfaceIPCTransferTest::ChildBranch2(const sptr<OHOS::Surface> &pSurface)
         sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
         int64_t data = sRet;
         write(pipeChild[1], &data, sizeof(data));
-        read(pipeMain[0], &data, sizeof(data)); 
+        read(pipeMain[0], &data, sizeof(data));
     }
 }
 
@@ -452,14 +452,14 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
-    //  Branch1: parent-side consumption verification 
+    // Branch1: parent-side consumption verification
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     ConsumeBranch1Frame();
     CheckSecondProducerRejected(producer);
     write(pipeMain[1], &data, sizeof(data));
 
-    //  Branch2: parent-side consumption verification, 3 lockstep cycles 
+    // Branch2: parent-side consumption verification, 3 lockstep cycles
     for (uint32_t i = 0; i < cycleTimes; i++) {
         data = ReadChildReport();
         EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
@@ -467,7 +467,7 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
         write(pipeMain[1], &data, sizeof(data));
     }
 
-    //  Branch3: parent-side consumption verification, small-size frame after realloc 
+    // Branch3: parent-side consumption verification, small-size frame after realloc
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     ConsumeSmallFrame();
