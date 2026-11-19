@@ -49,7 +49,7 @@ class SurfaceIPCTransferTest : public testing::Test, public IBufferConsumerListe
 public:
     static void SetUpTestCase();
     void OnBufferAvailable() override;
-    GSError SetData(sptr<SurfaceBuffer> &buffer, sptr<Surface> &pSurface);
+    GSError SetData(sptr<SurfaceBuffer> &buffer, const sptr<Surface> &pSurface);
     bool GetData(sptr<SurfaceBuffer> &buffer);
     GSError FillPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed);
     bool CheckPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed);
@@ -61,7 +61,7 @@ public:
     void ChildBranch3(const sptr<OHOS::Surface> &pSurface);
     void SetupNativeToken();
     void ConsumeBranch1Frame();
-    void CheckSecondProducerRejected(const sptr<IBufferProducer> &producer);
+    void CheckSecondProducerRejected(sptr<IBufferProducer> &producer);
     void ConsumeCycleFrame(uint32_t seed);
     void ConsumeSmallFrame();
 
@@ -86,6 +86,7 @@ void SurfaceIPCTransferTest::SetUpTestCase()
         .usage = BUFFER_USAGE_CPU_READ | BUFFER_USAGE_CPU_WRITE | BUFFER_USAGE_MEM_DMA,
         .timeout = 0,
     };
+
     smallConfig = requestConfig;
     smallConfig.width = 0x40;
     smallConfig.height = 0x40;
@@ -105,7 +106,7 @@ static inline GSError OnBufferRelease(sptr<SurfaceBuffer> &buffer)
 }
 
 // Child side: write ExtraData and tunnel handle to the buffer obtained via IPC (carried by FlushBuffer)
-GSError SurfaceIPCTransferTest::SetData(sptr<SurfaceBuffer> &buffer, sptr<Surface> &pSurface)
+GSError SurfaceIPCTransferTest::SetData(sptr<SurfaceBuffer> &buffer, const sptr<Surface> &pSurface)
 {
     buffer->GetExtraData()->ExtraSet("123", 0x123);
     buffer->GetExtraData()->ExtraSet("345", (int64_t)0x345);
@@ -162,7 +163,6 @@ GSError SurfaceIPCTransferTest::FillPatternData(sptr<SurfaceBuffer> &buffer, uin
     return buffer->FlushCache();
 }
 
-// Parent side
 bool SurfaceIPCTransferTest::CheckPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed)
 {
     if (buffer == nullptr) {
@@ -374,7 +374,7 @@ void SurfaceIPCTransferTest::ConsumeBranch1Frame()
 
 // Parent side negative: the child already owns the producer connection; a second local producer
 // surface in this process gets its request rejected by PID gating
-void SurfaceIPCTransferTest::CheckSecondProducerRejected(const sptr<IBufferProducer> &producer)
+void SurfaceIPCTransferTest::CheckSecondProducerRejected(sptr<IBufferProducer> &producer)
 {
     auto pSurfaceSecond = Surface::CreateSurfaceAsProducer(producer);
     sptr<SurfaceBuffer> buffer = nullptr;
@@ -436,6 +436,8 @@ void SurfaceIPCTransferTest::ConsumeSmallFrame()
 */
 HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
 {
+    // fork must precede any IPC operation on the parent side (token registration, samgr registration),
+    // so the child inherits a clean binder runtime, same ordering as surface_ipc_test.cpp
     auto pid = ChildProcessMain();
     ASSERT_GE(pid, 0);
 
@@ -446,17 +448,18 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
     auto sam = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->AddSystemAbility(ipcSystemAbilityID, producer->AsObject());
 
+    // The start message carries the queue uniqueId for the child to verify it got the same queue
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
-    // Branch1: parent-side consumption verification
+    //  Branch1: parent-side consumption verification 
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     ConsumeBranch1Frame();
     CheckSecondProducerRejected(producer);
     write(pipeMain[1], &data, sizeof(data));
 
-    // Branch2: parent-side consumption verification, 3 lockstep cycles
+    //  Branch2: parent-side consumption verification, 3 lockstep cycles 
     for (uint32_t i = 0; i < cycleTimes; i++) {
         data = ReadChildReport();
         EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
@@ -464,7 +467,7 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
         write(pipeMain[1], &data, sizeof(data));
     }
 
-    // Branch3: parent-side consumption verification, small-size frame after realloc
+    //  Branch3: parent-side consumption verification, small-size frame after realloc 
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     ConsumeSmallFrame();

@@ -181,6 +181,7 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
 
     int64_t data;
     read(pipeMain[0], &data, sizeof(data));
+
     uint64_t uniqueId = static_cast<uint64_t>(data);
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
@@ -229,7 +230,7 @@ void SurfaceIPCAttachDetachTest::ChildBranch1(const sptr<OHOS::Surface> &pSurfac
     if (sRet != SURFACE_ERROR_BUFFER_NOT_INCACHE) {
         ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
     }
-    // Attach back to the queue
+
     sRet = pSurface->AttachBufferToQueue(buffer);
     if (sRet != OHOS::GSERROR_OK) {
         ReportAndExit(pipeChild[1], sRet);
@@ -332,6 +333,7 @@ void SurfaceIPCAttachDetachTest::ChildBranch3(const sptr<OHOS::Surface> &pSurfac
     read(pipeMain[0], &data, sizeof(data)); // wait for the parent's final ack
 }
 
+// Parent side: grant the native token needed by samgr registration, same as surface_ipc_test.cpp
 void SurfaceIPCAttachDetachTest::SetupNativeToken()
 {
     const char *perms[2];
