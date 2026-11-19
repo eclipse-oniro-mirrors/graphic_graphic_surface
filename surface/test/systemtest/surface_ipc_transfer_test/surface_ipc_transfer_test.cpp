@@ -36,6 +36,13 @@ constexpr uint32_t SMALL_PATTERN_SEED = 0x3C3C0000; // Branch3: small-size buffe
 // Child report convention: a failed API call reports its real GSError; an expectation not met
 // (queue identity, attribute or sequence mismatch) reports GSERROR_INVALID_OPERATING, so the
 // parent never mistakes a child-side failure for GSERROR_OK.
+
+// Child side: report through the pipe and exit immediately; every child failure path ends here
+void ReportAndExit(int32_t pipeFd, int64_t code)
+{
+    write(pipeFd, &code, sizeof(code));
+    exit(0);
+}
 } // namespace
 
 class SurfaceIPCTransferTest : public testing::Test, public IBufferConsumerListenerClazz {
@@ -49,6 +56,14 @@ public:
     int64_t ReadChildReport();
     pid_t ChildProcessMain();
     sptr<OHOS::Surface> CreateSurface();
+    void ChildBranch1(const sptr<OHOS::Surface> &pSurface);
+    void ChildBranch2(const sptr<OHOS::Surface> &pSurface);
+    void ChildBranch3(const sptr<OHOS::Surface> &pSurface);
+    void SetupNativeToken();
+    void ConsumeBranch1Frame();
+    void CheckSecondProducerRejected(const sptr<IBufferProducer> &producer);
+    void ConsumeCycleFrame(uint32_t seed);
+    void ConsumeSmallFrame();
 
     static inline sptr<IConsumerSurface> cSurface = nullptr;
     static inline int32_t pipeMain[2] = {};
@@ -105,6 +120,7 @@ GSError SurfaceIPCTransferTest::SetData(sptr<SurfaceBuffer> &buffer, sptr<Surfac
     return ret;
 }
 
+// Parent side
 bool SurfaceIPCTransferTest::GetData(sptr<SurfaceBuffer> &buffer)
 {
     int32_t int32;
@@ -146,6 +162,7 @@ GSError SurfaceIPCTransferTest::FillPatternData(sptr<SurfaceBuffer> &buffer, uin
     return buffer->FlushCache();
 }
 
+// Parent side
 bool SurfaceIPCTransferTest::CheckPatternData(sptr<SurfaceBuffer> &buffer, uint32_t seed)
 {
     if (buffer == nullptr) {
@@ -192,10 +209,10 @@ sptr<OHOS::Surface> SurfaceIPCTransferTest::CreateSurface()
     return Surface::CreateSurfaceAsProducer(producer);
 }
 
-// Process B main body: after getting the producer via samgr, drive the buffer queue through 3 branches
-// in order. Each branch writes a report, then waits for the parent to finish consumption verification
-// and reply an ack before entering the next branch; pipe read/write counts are strictly complementary
-// with the parent (child writes 5 / reads 6, including start).
+// Process B main body: fork before any parent-side IPC operation so the child inherits a clean
+// binder runtime; after getting the producer via samgr, drive the buffer queue through 3 branches.
+// Pipe read/write counts are strictly complementary with the parent (child writes 5 / reads 6,
+// including start).
 pid_t SurfaceIPCTransferTest::ChildProcessMain()
 {
     pipe(pipeMain);
@@ -215,101 +232,13 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
     if (pSurface->GetUniqueId() != uniqueId) {
-        data = GSERROR_INVALID_OPERATING;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
     }
 
-    // ---------------- Branch1: cross-IPC RequestBuffer/FlushBuffer basics ----------------
-    sptr<SurfaceBuffer> buffer = nullptr;
-    int32_t releaseFence = -1;
-    auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
-    if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
-    }
+    ChildBranch1(pSurface);
+    ChildBranch2(pSurface);
+    ChildBranch3(pSurface);
 
-    if (buffer == nullptr || buffer->GetFileDescriptor() < 0 ||
-        buffer->GetWidth() != requestConfig.width || buffer->GetHeight() != requestConfig.height ||
-        buffer->GetFormat() != requestConfig.format) {
-        data = GSERROR_INVALID_OPERATING;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
-    }
-    sRet = SetData(buffer, pSurface);
-    if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
-    }
-    sRet = FillPatternData(buffer, PATTERN_SEED);
-    if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
-    }
-    sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
-    data = sRet;
-    write(pipeChild[1], &data, sizeof(data));
-    read(pipeMain[0], &data, sizeof(data)); 
-
-    // ---------------- Branch2: multi-cycle RequestBuffer/FlushBuffer loop ------
-    uint32_t firstSequence = 0;
-    for (uint32_t i = 0; i < cycleTimes; i++) {
-        buffer = nullptr;
-        sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
-        if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
-        }
-        // With lockstep consumption only one buffer rotates in the queue: each cycle's sequence number
-        // should match the first one, proving the server reuses the same buffer instead of reallocating
-        // per cycle
-        if (i == 0) {
-            firstSequence = buffer->GetSeqNum();
-        } else if (buffer->GetSeqNum() != firstSequence) {
-            data = GSERROR_INVALID_OPERATING;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
-        }
-        // Use a different seed each cycle to verify buffer content is fully overwritten on reuse
-        sRet = FillPatternData(buffer, PATTERN_SEED + i);
-        if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
-        }
-        sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        read(pipeMain[0], &data, sizeof(data));
-    }
-
-    // ------ Branch3: request config change triggers server-side realloc ------
-    buffer = nullptr;
-    sRet = pSurface->RequestBuffer(buffer, releaseFence, smallConfig);
-    if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
-    }
-    if (buffer->GetWidth() != smallConfig.width || buffer->GetHeight() != smallConfig.height) {
-        data = GSERROR_INVALID_OPERATING;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
-    }
-    sRet = FillPatternData(buffer, SMALL_PATTERN_SEED);
-    if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
-    }
-    sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
-    data = sRet;
-    write(pipeChild[1], &data, sizeof(data));
-    read(pipeMain[0], &data, sizeof(data)); 
     pSurface->UnRegisterReleaseListener();
     close(pipeMain[0]);
     close(pipeMain[1]);
@@ -317,6 +246,174 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
     close(pipeChild[1]);
     exit(0);
     return 0;
+}
+
+// Branch1 child side: request one buffer via IPC, verify its attributes, then submit it with
+// ExtraData, tunnel handle and pattern data
+void SurfaceIPCTransferTest::ChildBranch1(const sptr<OHOS::Surface> &pSurface)
+{
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t releaseFence = -1;
+    auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
+    if (sRet != OHOS::GSERROR_OK) {
+        ReportAndExit(pipeChild[1], sRet);
+    }
+
+    if (buffer == nullptr || buffer->GetFileDescriptor() < 0 ||
+        buffer->GetWidth() != requestConfig.width || buffer->GetHeight() != requestConfig.height ||
+        buffer->GetFormat() != requestConfig.format) {
+        ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
+    }
+    sRet = SetData(buffer, pSurface);
+    if (sRet != OHOS::GSERROR_OK) {
+        ReportAndExit(pipeChild[1], sRet);
+    }
+    sRet = FillPatternData(buffer, PATTERN_SEED);
+    if (sRet != OHOS::GSERROR_OK) {
+        ReportAndExit(pipeChild[1], sRet);
+    }
+    sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
+    int64_t data = sRet;
+    write(pipeChild[1], &data, sizeof(data));
+    read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish Branch1 consumption verification
+}
+
+// Branch2 child side: request and flush the buffer in lockstep cycles; the sequence number stays
+// unchanged, proving the server reuses the buffer instead of reallocating per cycle
+void SurfaceIPCTransferTest::ChildBranch2(const sptr<OHOS::Surface> &pSurface)
+{
+    uint32_t firstSequence = 0;
+    for (uint32_t i = 0; i < cycleTimes; i++) {
+        sptr<SurfaceBuffer> buffer = nullptr;
+        int32_t releaseFence = -1;
+        auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
+        if (sRet != OHOS::GSERROR_OK) {
+            ReportAndExit(pipeChild[1], sRet);
+        }
+        if (i == 0) {
+            firstSequence = buffer->GetSeqNum();
+        } else if (buffer->GetSeqNum() != firstSequence) {
+            ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
+        }
+        // Use a different seed each cycle to verify buffer content is fully overwritten on reuse
+        sRet = FillPatternData(buffer, PATTERN_SEED + i);
+        if (sRet != OHOS::GSERROR_OK) {
+            ReportAndExit(pipeChild[1], sRet);
+        }
+        sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
+        int64_t data = sRet;
+        write(pipeChild[1], &data, sizeof(data));
+        read(pipeMain[0], &data, sizeof(data)); 
+    }
+}
+
+// Branch3 child side: request with a smaller config; the server reallocates the buffer for the new
+// size, then the frame is submitted after filling pattern data
+void SurfaceIPCTransferTest::ChildBranch3(const sptr<OHOS::Surface> &pSurface)
+{
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t releaseFence = -1;
+    auto sRet = pSurface->RequestBuffer(buffer, releaseFence, smallConfig);
+    if (sRet != OHOS::GSERROR_OK) {
+        ReportAndExit(pipeChild[1], sRet);
+    }
+    if (buffer->GetWidth() != smallConfig.width || buffer->GetHeight() != smallConfig.height) {
+        ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
+    }
+    sRet = FillPatternData(buffer, SMALL_PATTERN_SEED);
+    if (sRet != OHOS::GSERROR_OK) {
+        ReportAndExit(pipeChild[1], sRet);
+    }
+    sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
+    int64_t data = sRet;
+    write(pipeChild[1], &data, sizeof(data));
+    read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish Branch3 consumption verification
+}
+
+// Parent side: grant the native token needed by samgr registration, same as surface_ipc_test.cpp
+void SurfaceIPCTransferTest::SetupNativeToken()
+{
+    const char *perms[2];
+    perms[0] = "ohos.permission.DISTRIBUTED_DATASYNC";
+    perms[1] = "ohos.permission.CAMERA";
+    NativeTokenInfoParams infoInstance = {
+        .dcapsNum = 0,
+        .permsNum = 2,
+        .aclsNum = 0,
+        .dcaps = NULL,
+        .perms = perms,
+        .acls = NULL,
+        .processName = "dcamera_client_demo",
+        .aplStr = "system_basic",
+    };
+    uint64_t tokenId = GetAccessTokenId(&infoInstance);
+    SetSelfTokenID(tokenId);
+    int32_t ret = Security::AccessToken::AccessTokenKit::ReloadNativeTokenInfo();
+    ASSERT_EQ(ret, Security::AccessToken::RET_SUCCESS);
+}
+
+// Parent side: consume the Branch1 frame and verify ExtraData, tunnel handle, damage and pattern data
+void SurfaceIPCTransferTest::ConsumeBranch1Frame()
+{
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t fence = -1;
+    int64_t timestamp = 0;
+    Rect damage = {};
+    auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+    EXPECT_NE(buffer, nullptr);
+    // ExtraData and tunnel handle round-trip across processes unchanged
+    EXPECT_EQ(GetData(buffer), true);
+    // Pattern data matches word by word: parent and child zero-copy share the same DMA memory
+    EXPECT_EQ(CheckPatternData(buffer, PATTERN_SEED), true);
+    EXPECT_EQ(damage.w, flushConfig.damage.w);
+    EXPECT_EQ(damage.h, flushConfig.damage.h);
+    sRet = cSurface->ReleaseBuffer(buffer, -1);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+}
+
+// Parent side negative: the child already owns the producer connection; a second local producer
+// surface in this process gets its request rejected by PID gating
+void SurfaceIPCTransferTest::CheckSecondProducerRejected(const sptr<IBufferProducer> &producer)
+{
+    auto pSurfaceSecond = Surface::CreateSurfaceAsProducer(producer);
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t releaseFence = -1;
+    auto sRet = pSurfaceSecond->RequestBuffer(buffer, releaseFence, requestConfig);
+    EXPECT_EQ(sRet, GSERROR_CONSUMER_IS_CONNECTED);
+    EXPECT_EQ(buffer, nullptr);
+}
+
+// Parent side: consume one lockstep cycle frame and verify its pattern data
+void SurfaceIPCTransferTest::ConsumeCycleFrame(uint32_t seed)
+{
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t fence = -1;
+    int64_t timestamp = 0;
+    Rect damage = {};
+    auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+    EXPECT_NE(buffer, nullptr);
+    EXPECT_EQ(CheckPatternData(buffer, seed), true);
+    sRet = cSurface->ReleaseBuffer(buffer, -1);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+}
+
+// Parent side: consume the small-size frame after server realloc, verify size and pattern data
+void SurfaceIPCTransferTest::ConsumeSmallFrame()
+{
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t fence = -1;
+    int64_t timestamp = 0;
+    Rect damage = {};
+    auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+    EXPECT_NE(buffer, nullptr);
+    EXPECT_EQ(buffer->GetWidth(), smallConfig.width);
+    EXPECT_EQ(buffer->GetHeight(), smallConfig.height);
+    EXPECT_EQ(CheckPatternData(buffer, SMALL_PATTERN_SEED), true);
+    sRet = cSurface->ReleaseBuffer(buffer, -1);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
 }
 
 /*
@@ -339,29 +436,10 @@ pid_t SurfaceIPCTransferTest::ChildProcessMain()
 */
 HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
 {
-    // fork must precede any IPC operation on the parent side (token registration, samgr registration),
-    // so the child inherits a clean binder runtime, same ordering as surface_ipc_test.cpp
     auto pid = ChildProcessMain();
     ASSERT_GE(pid, 0);
 
-    uint64_t tokenId;
-    const char *perms[2];
-    perms[0] = "ohos.permission.DISTRIBUTED_DATASYNC";
-    perms[1] = "ohos.permission.CAMERA";
-    NativeTokenInfoParams infoInstance = {
-        .dcapsNum = 0,
-        .permsNum = 2,
-        .aclsNum = 0,
-        .dcaps = NULL,
-        .perms = perms,
-        .acls = NULL,
-        .processName = "dcamera_client_demo",
-        .aplStr = "system_basic",
-    };
-    tokenId = GetAccessTokenId(&infoInstance);
-    SetSelfTokenID(tokenId);
-    int32_t rett = Security::AccessToken::AccessTokenKit::ReloadNativeTokenInfo();
-    ASSERT_EQ(rett, Security::AccessToken::RET_SUCCESS);
+    SetupNativeToken();
     cSurface = IConsumerSurface::Create("SurfaceIPCTransferTest");
     cSurface->RegisterConsumerListener(this);
     auto producer = cSurface->GetProducer();
@@ -371,69 +449,25 @@ HWTEST_F(SurfaceIPCTransferTest, BufferTransferIPC001, TestSize.Level0)
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
-    // ---------------- Branch1: parent-side consumption verification ----------------
+    // Branch1: parent-side consumption verification
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
-    {
-        sptr<SurfaceBuffer> buffer = nullptr;
-        int32_t fence = -1;
-        int64_t timestamp = 0;
-        Rect damage = {};
-        auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-        EXPECT_NE(buffer, nullptr);
-        // ExtraData and tunnel handle round-trip across processes unchanged
-        EXPECT_EQ(GetData(buffer), true);
-        // Pattern data matches word by word: parent and child zero-copy share the same DMA memory
-        EXPECT_EQ(CheckPatternData(buffer, PATTERN_SEED), true);
-        EXPECT_EQ(damage.w, flushConfig.damage.w);
-        EXPECT_EQ(damage.h, flushConfig.damage.h);
-        sRet = cSurface->ReleaseBuffer(buffer, -1);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-
-        auto pSurfaceSecond = Surface::CreateSurfaceAsProducer(producer);
-        sptr<SurfaceBuffer> bufferSecond = nullptr;
-        int32_t releaseFence = -1;
-        sRet = pSurfaceSecond->RequestBuffer(bufferSecond, releaseFence, requestConfig);
-        EXPECT_EQ(sRet, GSERROR_CONSUMER_IS_CONNECTED);
-        EXPECT_EQ(bufferSecond, nullptr);
-    }
+    ConsumeBranch1Frame();
+    CheckSecondProducerRejected(producer);
     write(pipeMain[1], &data, sizeof(data));
 
-    // --------- Branch2: parent-side consumption verification, 3 lockstep cycles ---
+    // Branch2: parent-side consumption verification, 3 lockstep cycles
     for (uint32_t i = 0; i < cycleTimes; i++) {
         data = ReadChildReport();
         EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
-        sptr<SurfaceBuffer> buffer = nullptr;
-        int32_t fence = -1;
-        int64_t timestamp = 0;
-        Rect damage = {};
-        auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-        EXPECT_NE(buffer, nullptr);
-        EXPECT_EQ(CheckPatternData(buffer, PATTERN_SEED + i), true);
-        sRet = cSurface->ReleaseBuffer(buffer, -1);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+        ConsumeCycleFrame(PATTERN_SEED + i);
         write(pipeMain[1], &data, sizeof(data));
     }
 
-    // ------ Branch3: parent-side consumption verification, small-size frame after realloc ---
+    // Branch3: parent-side consumption verification, small-size frame after realloc
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
-    {
-        sptr<SurfaceBuffer> buffer = nullptr;
-        int32_t fence = -1;
-        int64_t timestamp = 0;
-        Rect damage = {};
-        auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-        EXPECT_NE(buffer, nullptr);
-        EXPECT_EQ(buffer->GetWidth(), smallConfig.width);
-        EXPECT_EQ(buffer->GetHeight(), smallConfig.height);
-        EXPECT_EQ(CheckPatternData(buffer, SMALL_PATTERN_SEED), true);
-        sRet = cSurface->ReleaseBuffer(buffer, -1);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-    }
+    ConsumeSmallFrame();
     write(pipeMain[1], &data, sizeof(data));
 
     //close resource

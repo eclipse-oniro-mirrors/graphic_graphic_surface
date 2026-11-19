@@ -37,6 +37,13 @@ constexpr uint32_t BATCH_PATTERN_SEED = 0x52520000;  // Branch2: 3 frames attach
 // Child report convention: a failed API call reports its real GSError; an expectation not met
 // (queue identity or sequence mismatch, a negative case not rejected) reports GSERROR_INVALID_OPERATING,
 // so the parent never mistakes a child-side failure for GSERROR_OK.
+
+// Child side: report through the pipe and exit immediately; every child failure path ends here
+void ReportAndExit(int32_t pipeFd, int64_t code)
+{
+    write(pipeFd, &code, sizeof(code));
+    exit(0);
+}
 } // namespace
 
 class SurfaceIPCAttachDetachTest : public testing::Test, public IBufferConsumerListenerClazz {
@@ -48,6 +55,12 @@ public:
     int64_t ReadChildReport();
     pid_t ChildProcessMain();
     sptr<OHOS::Surface> CreateSurface();
+    void ChildBranch1(const sptr<OHOS::Surface> &pSurface);
+    void ChildBranch2(const sptr<OHOS::Surface> &pSurface, std::vector<uint32_t> &sequences);
+    void ChildBranch3(const sptr<OHOS::Surface> &pSurface, const std::vector<uint32_t> &sequences);
+    void SetupNativeToken();
+    void ConsumeAttachedFrame();
+    void ConsumeBatchFrames();
 
     static inline sptr<IConsumerSurface> cSurface = nullptr;
     static inline int32_t pipeMain[2] = {};
@@ -150,10 +163,10 @@ sptr<OHOS::Surface> SurfaceIPCAttachDetachTest::CreateSurface()
     return Surface::CreateSurfaceAsProducer(producer);
 }
 
-// Process B main body: after getting the producer via samgr, drive the attach/detach scenarios
-// through 2 branches in order. Each branch writes a report, then waits for the parent to finish
-// consumption verification and reply an ack before entering the next branch; pipe read/write counts
-// are strictly complementary with the parent (child writes 3 / reads 4, including start).
+// Process B main body: fork before any parent-side IPC operation so the child inherits a clean
+// binder runtime; after getting the producer via samgr, drive the attach/detach scenarios through
+// 3 branches. Pipe read/write counts are strictly complementary with the parent (child writes 3 /
+// reads 4, including start).
 pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
 {
     pipe(pipeMain);
@@ -172,79 +185,85 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     auto pSurface = CreateSurface();
     pSurface->RegisterReleaseListener(OnBufferRelease);
     if (pSurface->GetUniqueId() != uniqueId) {
-        data = GSERROR_INVALID_OPERATING;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
     }
 
+    ChildBranch1(pSurface);
+    std::vector<uint32_t> sequences;
+    ChildBranch2(pSurface, sequences);
+    ChildBranch3(pSurface, sequences);
+
+    pSurface->UnRegisterReleaseListener();
+    close(pipeMain[0]);
+    close(pipeMain[1]);
+    close(pipeChild[0]);
+    close(pipeChild[1]);
+    exit(0);
+    return 0;
+}
+
+// Branch1 child side: exercise the attach/detach state machine across IPC — attaching a cached
+// buffer is rejected, detaching in REQUESTED state succeeds, flushing a detached buffer is
+// rejected, and attaching back keeps the sequence number for a normal submit
+void SurfaceIPCAttachDetachTest::ChildBranch1(const sptr<OHOS::Surface> &pSurface)
+{
     sptr<SurfaceBuffer> buffer = nullptr;
     int32_t releaseFence = -1;
     auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
     if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], sRet);
     }
     uint32_t sequence = buffer->GetSeqNum();
     // Negative: attaching a buffer already cached in the server queue again must be rejected
     sRet = pSurface->AttachBufferToQueue(buffer);
     if (sRet != SURFACE_ERROR_BUFFER_IS_INCACHE) {
-        data = GSERROR_INVALID_OPERATING;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
     }
     // Detaching in REQUESTED state is legal; the buffer leaves the server cache
     sRet = pSurface->DetachBufferFromQueue(buffer);
     if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], sRet);
     }
     // Negative: flushing a detached buffer must be rejected
     sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
     if (sRet != SURFACE_ERROR_BUFFER_NOT_INCACHE) {
-        data = GSERROR_INVALID_OPERATING;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
     }
+    // Attach back to the queue
     sRet = pSurface->AttachBufferToQueue(buffer);
     if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], sRet);
     }
     if (buffer->GetSeqNum() != sequence) {
-        data = GSERROR_INVALID_OPERATING;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
     }
     sRet = FillPatternData(buffer, ATTACH_PATTERN_SEED);
     if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], sRet);
     }
     sRet = pSurface->FlushBuffer(buffer, -1, flushConfig);
-    data = sRet;
+    int64_t data = sRet;
     write(pipeChild[1], &data, sizeof(data));
     read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish Branch1 consumption verification
+}
 
-    // -------- Branch2: batch attach and server-side buffer reuse --------
-    sRet = pSurface->SetQueueSize(queueSize);
+// Branch2 child side: request queueSize buffers, detach them all, then attach each one back
+// (sequence number unchanged), fill with distinct seeds and submit; the requested sequence numbers
+// are saved for the Branch3 reuse verification
+void SurfaceIPCAttachDetachTest::ChildBranch2(const sptr<OHOS::Surface> &pSurface,
+    std::vector<uint32_t> &sequences)
+{
+    auto sRet = pSurface->SetQueueSize(queueSize);
     if (sRet != OHOS::GSERROR_OK) {
-        data = sRet;
-        write(pipeChild[1], &data, sizeof(data));
-        exit(0);
+        ReportAndExit(pipeChild[1], sRet);
     }
     std::vector<sptr<SurfaceBuffer>> buffers;
-    std::vector<uint32_t> sequences;
     for (uint32_t i = 0; i < queueSize; i++) {
-        buffer = nullptr;
+        sptr<SurfaceBuffer> buffer = nullptr;
+        int32_t releaseFence = -1;
         sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
         if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], sRet);
         }
         buffers.push_back(buffer);
         sequences.push_back(buffer->GetSeqNum());
@@ -253,50 +272,43 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
     for (uint32_t i = 0; i < queueSize; i++) {
         sRet = pSurface->DetachBufferFromQueue(buffers[i]);
         if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], sRet);
         }
     }
     // Attach each one back (sequence number unchanged), fill and submit
     for (uint32_t i = 0; i < queueSize; i++) {
         sRet = pSurface->AttachBufferToQueue(buffers[i]);
         if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], sRet);
         }
         if (buffers[i]->GetSeqNum() != sequences[i]) {
-            data = GSERROR_INVALID_OPERATING;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
         }
         sRet = FillPatternData(buffers[i], BATCH_PATTERN_SEED + i);
         if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], sRet);
         }
         sRet = pSurface->FlushBuffer(buffers[i], -1, flushConfig);
         if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], sRet);
         }
     }
-    data = OHOS::GSERROR_OK;
+    int64_t data = OHOS::GSERROR_OK;
     write(pipeChild[1], &data, sizeof(data));
     read(pipeMain[0], &data, sizeof(data)); // wait for the parent to finish consuming the 3 frames
+}
 
-    // Reuse verification: after buffers return to the free queue, 
-    // requesting again should reuse the buffers with the original sequence numbers (no server reallocation)
+// Branch3 child side: after the consumed buffers return to the free queue, requesting again should
+// reuse the buffers with the original sequence numbers; CancelBuffer returns them to keep the queue clean
+void SurfaceIPCAttachDetachTest::ChildBranch3(const sptr<OHOS::Surface> &pSurface,
+    const std::vector<uint32_t> &sequences)
+{
     for (uint32_t i = 0; i < queueSize; i++) {
-        buffer = nullptr;
-        sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
+        sptr<SurfaceBuffer> buffer = nullptr;
+        int32_t releaseFence = -1;
+        auto sRet = pSurface->RequestBuffer(buffer, releaseFence, requestConfig);
         if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], sRet);
         }
         uint32_t newSequence = buffer->GetSeqNum();
         bool isReused = false;
@@ -307,29 +319,80 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
             }
         }
         if (!isReused) {
-            data = GSERROR_INVALID_OPERATING;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], GSERROR_INVALID_OPERATING);
         }
         // CancelBuffer returns it, keeping the queue state clean
         sRet = pSurface->CancelBuffer(buffer);
         if (sRet != OHOS::GSERROR_OK) {
-            data = sRet;
-            write(pipeChild[1], &data, sizeof(data));
-            exit(0);
+            ReportAndExit(pipeChild[1], sRet);
         }
     }
-    data = OHOS::GSERROR_OK;
+    int64_t data = OHOS::GSERROR_OK;
     write(pipeChild[1], &data, sizeof(data));
     read(pipeMain[0], &data, sizeof(data)); // wait for the parent's final ack
+}
 
-    pSurface->UnRegisterReleaseListener();
-    close(pipeMain[0]);
-    close(pipeMain[1]);
-    close(pipeChild[0]);
-    close(pipeChild[1]);
-    exit(0);
-    return 0;
+void SurfaceIPCAttachDetachTest::SetupNativeToken()
+{
+    const char *perms[2];
+    perms[0] = "ohos.permission.DISTRIBUTED_DATASYNC";
+    perms[1] = "ohos.permission.CAMERA";
+    NativeTokenInfoParams infoInstance = {
+        .dcapsNum = 0,
+        .permsNum = 2,
+        .aclsNum = 0,
+        .dcaps = NULL,
+        .perms = perms,
+        .acls = NULL,
+        .processName = "dcamera_client_demo",
+        .aplStr = "system_basic",
+    };
+    uint64_t tokenId = GetAccessTokenId(&infoInstance);
+    SetSelfTokenID(tokenId);
+    int32_t ret = Security::AccessToken::AccessTokenKit::ReloadNativeTokenInfo();
+    ASSERT_EQ(ret, Security::AccessToken::RET_SUCCESS);
+}
+
+// Parent side: consume the frame submitted after attaching back and verify its pattern data
+void SurfaceIPCAttachDetachTest::ConsumeAttachedFrame()
+{
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t fence = -1;
+    int64_t timestamp = 0;
+    Rect damage = {};
+    auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+    EXPECT_NE(buffer, nullptr);
+    EXPECT_EQ(CheckPatternData(buffer, ATTACH_PATTERN_SEED), true);
+    sRet = cSurface->ReleaseBuffer(buffer, -1);
+    EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+}
+
+// Parent side: consume the 3 batch-attached frames in submit order and verify each seed; after the
+// queue is drained, acquiring again should return GSERROR_NO_BUFFER
+void SurfaceIPCAttachDetachTest::ConsumeBatchFrames()
+{
+    for (uint32_t i = 0; i < queueSize; i++) {
+        sptr<SurfaceBuffer> buffer = nullptr;
+        int32_t fence = -1;
+        int64_t timestamp = 0;
+        Rect damage = {};
+        auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
+        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+        EXPECT_NE(buffer, nullptr);
+        // The dirty queue dequeues in submit order; verify each frame's own seed
+        EXPECT_EQ(CheckPatternData(buffer, BATCH_PATTERN_SEED + i), true);
+        sRet = cSurface->ReleaseBuffer(buffer, -1);
+        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
+    }
+
+    sptr<SurfaceBuffer> buffer = nullptr;
+    int32_t fence = -1;
+    int64_t timestamp = 0;
+    Rect damage = {};
+    auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
+    EXPECT_EQ(sRet, GSERROR_NO_BUFFER);
+    EXPECT_EQ(buffer, nullptr);
 }
 
 /*
@@ -348,7 +411,9 @@ pid_t SurfaceIPCAttachDetachTest::ChildProcessMain()
 *                     pattern data
 *                  4. Branch2: process B request 3 buffers, detach all and attach back one by
 *                     one with different seeds, process A acquire 3 frames in order and queue is
-*                     drained; re-request after release reuse the same sequence buffers
+*                     drained
+*                  5. Branch3: re-request after release reuse the same sequence buffers, process B
+*                     cancel them back
 */
 HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
 {
@@ -357,75 +422,30 @@ HWTEST_F(SurfaceIPCAttachDetachTest, AttachDetachBufferIPC001, TestSize.Level0)
     auto pid = ChildProcessMain();
     ASSERT_GE(pid, 0);
 
-    uint64_t tokenId;
-    const char *perms[2];
-    perms[0] = "ohos.permission.DISTRIBUTED_DATASYNC";
-    perms[1] = "ohos.permission.CAMERA";
-    NativeTokenInfoParams infoInstance = {
-        .dcapsNum = 0,
-        .permsNum = 2,
-        .aclsNum = 0,
-        .dcaps = NULL,
-        .perms = perms,
-        .acls = NULL,
-        .processName = "dcamera_client_demo",
-        .aplStr = "system_basic",
-    };
-    tokenId = GetAccessTokenId(&infoInstance);
-    SetSelfTokenID(tokenId);
-    int32_t rett = Security::AccessToken::AccessTokenKit::ReloadNativeTokenInfo();
-    ASSERT_EQ(rett, Security::AccessToken::RET_SUCCESS);
+    SetupNativeToken();
     cSurface = IConsumerSurface::Create("SurfaceIPCAttachDetachTest");
     cSurface->RegisterConsumerListener(this);
     auto producer = cSurface->GetProducer();
     auto sam = SystemAbilityManagerClient::GetInstance().GetSystemAbilityManager();
     sam->AddSystemAbility(ipcSystemAbilityID, producer->AsObject());
 
+    // The start message carries the queue uniqueId for the child to verify it got the same queue
     int64_t data = static_cast<int64_t>(cSurface->GetUniqueId());
     write(pipeMain[1], &data, sizeof(data));
 
+    //  Branch1: parent-side consumption verification, the frame submitted after attaching back 
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
-    {
-        sptr<SurfaceBuffer> buffer = nullptr;
-        int32_t fence = -1;
-        int64_t timestamp = 0;
-        Rect damage = {};
-        auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-        EXPECT_NE(buffer, nullptr);
-        EXPECT_EQ(CheckPatternData(buffer, ATTACH_PATTERN_SEED), true);
-        sRet = cSurface->ReleaseBuffer(buffer, -1);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-    }
+    ConsumeAttachedFrame();
     write(pipeMain[1], &data, sizeof(data));
 
+    //  Branch2: parent-side consumption verification, the 3 frames attached in batch 
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
-    for (uint32_t i = 0; i < queueSize; i++) {
-        sptr<SurfaceBuffer> buffer = nullptr;
-        int32_t fence = -1;
-        int64_t timestamp = 0;
-        Rect damage = {};
-        auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-        EXPECT_NE(buffer, nullptr);
-        // The dirty queue dequeues in submit order; verify each frame's own seed
-        EXPECT_EQ(CheckPatternData(buffer, BATCH_PATTERN_SEED + i), true);
-        sRet = cSurface->ReleaseBuffer(buffer, -1);
-        EXPECT_EQ(sRet, OHOS::GSERROR_OK);
-    }
-    {
-        sptr<SurfaceBuffer> buffer = nullptr;
-        int32_t fence = -1;
-        int64_t timestamp = 0;
-        Rect damage = {};
-        auto sRet = cSurface->AcquireBuffer(buffer, fence, timestamp, damage);
-        EXPECT_EQ(sRet, GSERROR_NO_BUFFER);
-        EXPECT_EQ(buffer, nullptr);
-    }
+    ConsumeBatchFrames();
     write(pipeMain[1], &data, sizeof(data));
 
+    //  Branch3: the child only reports the reuse result, nothing for the parent to consume 
     data = ReadChildReport();
     EXPECT_EQ(data, static_cast<int64_t>(OHOS::GSERROR_OK));
     write(pipeMain[1], &data, sizeof(data));
