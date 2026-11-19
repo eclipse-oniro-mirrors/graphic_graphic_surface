@@ -57,6 +57,7 @@
     _ZNSt3__h13basic_filebufIcNS_11char_traitsIcEEEC2Ev;
     _ZNSt3__h13basic_filebufIcNS_11char_traitsIcEEED0Ev;
     _ZNSt3__h13basic_filebufIcNS_11char_traitsIcEEED2Ev;
+    _ZNKSt3__h15basic_stringbufIcNS_11char_traitsIcEENS_9allocatorIcEEE3strEv;
     _ZNSt3__h15basic_stringbufIcNS_11char_traitsIcEENS_9allocatorIcEEE3strERKNS_12basic_stringIcS2_S4_EE;
     _ZNSt3__h15basic_stringbufIcNS_11char_traitsIcEENS_9allocatorIcEEE7seekoffExNS_8ios_base7seekdirEj;
     _ZNSt3__h15basic_stringbufIcNS_11char_traitsIcEENS_9allocatorIcEEE8overflowEi;
@@ -82,4 +83,5 @@
     _ZTVNSt3__h15basic_stringbufIcNS_11char_traitsIcEENS_9allocatorIcEEEE;
     _ZTVNSt3__h18basic_stringstreamIcNS_11char_traitsIcEENS_9allocatorIcEEEE;
     _ZTVNSt3__h19basic_ostringstreamIcNS_11char_traitsIcEENS_9allocatorIcEEEE;
+    _ZTVN4OHOS19BrokerDelegatorBaseE;
 };
