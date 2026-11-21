@@ -131,10 +131,12 @@ public:
     GSError GetLastFlushedBuffer(sptr<SurfaceBuffer>& buffer, sptr<SyncFence>& fence,
         float matrix[16], uint32_t matrixSize, bool isUseNewMatrix, bool needRecordSequence = false);
 
-    GSError AcquireBuffer(sptr<SurfaceBuffer>& buffer, sptr<SyncFence>& fence,
-                          int64_t &timestamp, std::vector<Rect> &damages);
-    GSError AcquireBuffer(IConsumerSurface::AcquireBufferReturnValue &returnValue, int64_t expectPresentTimestamp,
-                          bool isUsingAutoTimestamp);
+    GSError AcquireBuffer(sptr<SurfaceBuffer>& buffer, sptr<SyncFence>& fence, int64_t& timestamp,
+        std::vector<Rect>& damages, bool isTunnelMode = false);
+    GSError AcquireBuffer(IConsumerSurface::AcquireBufferReturnValue& returnValue, int64_t expectPresentTimestamp,
+        bool isUsingAutoTimestamp, bool isTunnelMode = false);
+    GSError AcquireBufferForTunnel(IConsumerSurface::AcquireBufferReturnValue& returnValue,
+        int64_t expectPresentTimestamp, bool isUsingAutoTimestamp);
     GSError ReleaseBuffer(sptr<SurfaceBuffer>& buffer, const sptr<SyncFence>& fence);
 
     GSError AttachBuffer(sptr<SurfaceBuffer>& buffer, int32_t timeOut);

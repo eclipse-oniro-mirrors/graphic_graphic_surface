@@ -949,8 +949,8 @@ void BufferQueue::LogAndTraceAllBufferInBufferQueueCacheLocked()
     }
 }
 
-GSError BufferQueue::AcquireBuffer(sptr<SurfaceBuffer> &buffer,
-    sptr<SyncFence> &fence, int64_t &timestamp, std::vector<Rect> &damages)
+GSError BufferQueue::AcquireBuffer(sptr<SurfaceBuffer>& buffer, sptr<SyncFence>& fence, int64_t& timestamp,
+    std::vector<Rect>& damages, bool isTunnelMode)
 {
     SURFACE_TRACE_NAME_FMT("AcquireBuffer name: %s queueId: %" PRIu64, name_.c_str(), uniqueId_);
     // dequeue from dirty list
@@ -970,6 +970,9 @@ GSError BufferQueue::AcquireBuffer(sptr<SurfaceBuffer> &buffer,
             mapIter->second.isAutoTimestamp);
         // record game acquire buffer time
         Rosen::FrameReport::GetInstance().SetAcquireBufferSeqWithUniqueId(uniqueId_, sequence);
+        if (isTunnelMode) {
+            Rosen::FrameReport::GetInstance().AddAcquireBufferTunnelOffset();
+        }
     } else if (ret == GSERROR_NO_BUFFER) {
         LogAndTraceAllBufferInBufferQueueCacheLocked();
     }
@@ -978,13 +981,14 @@ GSError BufferQueue::AcquireBuffer(sptr<SurfaceBuffer> &buffer,
     return ret;
 }
 
-GSError BufferQueue::AcquireBuffer(IConsumerSurface::AcquireBufferReturnValue &returnValue,
-                                   int64_t expectPresentTimestamp, bool isUsingAutoTimestamp)
+GSError BufferQueue::AcquireBuffer(IConsumerSurface::AcquireBufferReturnValue& returnValue,
+    int64_t expectPresentTimestamp, bool isUsingAutoTimestamp, bool isTunnelMode)
 {
     SURFACE_TRACE_NAME_FMT("AcquireBuffer with PresentTimestamp name: %s queueId: %" PRIu64 " queueSize: %u,"
         "expectPresentTimestamp: %" PRId64, name_.c_str(), uniqueId_, bufferQueueSize_, expectPresentTimestamp);
     if (expectPresentTimestamp <= 0) {
-        return AcquireBuffer(returnValue.buffer, returnValue.fence, returnValue.timestamp, returnValue.damages);
+        return AcquireBuffer(
+            returnValue.buffer, returnValue.fence, returnValue.timestamp, returnValue.damages, isTunnelMode);
     }
     std::vector<BufferAndFence> dropBuffers;
     {
@@ -1044,7 +1048,14 @@ GSError BufferQueue::AcquireBuffer(IConsumerSurface::AcquireBufferReturnValue &r
         }
     }
     ReleaseDropBuffers(dropBuffers);
-    return AcquireBuffer(returnValue.buffer, returnValue.fence, returnValue.timestamp, returnValue.damages);
+    return AcquireBuffer(
+        returnValue.buffer, returnValue.fence, returnValue.timestamp, returnValue.damages, isTunnelMode);
+}
+
+GSError BufferQueue::AcquireBufferForTunnel(
+    IConsumerSurface::AcquireBufferReturnValue& returnValue, int64_t expectPresentTimestamp, bool isUsingAutoTimestamp)
+{
+    return AcquireBuffer(returnValue, expectPresentTimestamp, isUsingAutoTimestamp, true);
 }
 
 void BufferQueue::DropFirstDirtyBuffer(BufferElement &frontBufferElement, BufferElement &secondBufferElement,
@@ -2459,6 +2470,7 @@ static GSError ResolveTunnelLayerConfig(TunnelTypeMask tunnelTypeMask, uint64_t 
             property = TUNNEL_PROP_BUFFER_ADDR;
             return GSERROR_OK;
         case TunnelTypeMask::TUNNEL_TYPE_ANCO:
+        case TunnelTypeMask::TUNNEL_TYPE_GAME:
             tunnelLayerId = uniqueId;
             property = static_cast<TunnelLayerProperty>(
                 TUNNEL_PROP_BUFFER_ADDR | TUNNEL_PROP_WITH_RELEASE_FENCE);

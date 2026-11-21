@@ -1280,6 +1280,17 @@ int32_t NativeWindowPreAllocBuffers(OHNativeWindow *window, uint32_t allocBuffer
     return OHOS::SURFACE_ERROR_OK;
 }
 
+int32_t NativeWindowSetTunnelLayerInfo(OHNativeWindow* window, NativeTunnelType tunnelType)
+{
+    if (window == nullptr || !IsNativeObjectAvailable(window)) {
+        return OHOS::SURFACE_ERROR_INVALID_PARAM;
+    }
+    BLOGE_CHECK_AND_RETURN_RET(window->surface != nullptr, SURFACE_ERROR_ERROR, "window surface is null.");
+    TunnelLayerInfo info;
+    info.tunnelTypeMask = static_cast<TunnelTypeMask>(tunnelType);
+    return window->surface->SetTunnelLayerInfo(info);
+}
+
 NativeWindow::NativeWindow() : NativeWindowMagic(NATIVE_OBJECT_MAGIC_WINDOW), surface(nullptr)
 {
 }

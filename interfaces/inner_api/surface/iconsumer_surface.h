@@ -432,6 +432,16 @@ public:
         (void)permission;
         return SURFACE_ERROR_NOT_SUPPORT;
     }
+
+    virtual GSError AcquireBufferForTunnel(
+        AcquireBufferReturnValue& returnValue, int64_t expectPresentTimestamp, bool isUsingAutoTimestamp)
+    {
+        (void)returnValue;
+        (void)expectPresentTimestamp;
+        (void)isUsingAutoTimestamp;
+        return SURFACE_ERROR_NOT_SUPPORT;
+    }
+
 protected:
     IConsumerSurface() = default;
 };

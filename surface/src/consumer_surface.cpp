@@ -117,6 +117,15 @@ GSError ConsumerSurface::AcquireBuffer(AcquireBufferReturnValue &returnValue, in
     return consumer_->AcquireBuffer(returnValue, expectPresentTimestamp, isUsingAutoTimestamp);
 }
 
+GSError ConsumerSurface::AcquireBufferForTunnel(
+    AcquireBufferReturnValue& returnValue, int64_t expectPresentTimestamp, bool isUsingAutoTimestamp)
+{
+    if (consumer_ == nullptr) {
+        return GSERROR_INVALID_ARGUMENTS;
+    }
+    return consumer_->AcquireBufferForTunnel(returnValue, expectPresentTimestamp, isUsingAutoTimestamp);
+}
+
 GSError ConsumerSurface::ReleaseBuffer(sptr<SurfaceBuffer>& buffer, const sptr<SyncFence>& fence)
 {
     if (buffer == nullptr || consumer_ == nullptr) {

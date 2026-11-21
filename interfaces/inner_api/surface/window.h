@@ -31,6 +31,27 @@ enum NativeObjectMagic {
     NATIVE_OBJECT_MAGIC_WINDOW_INVALID = MKMAGIC('I', 'V', 'L', 'D'),
 };
 
+/**
+ * @brief Indicates the tunnel type of a native window, which is used for the direct display path.
+ * The enum values are consistent with the inner TunnelTypeMask.
+ */
+typedef enum {
+    /** Tunnel disabled */
+    NATIVE_TUNNEL_TYPE_NONE = 0,
+    /** Hard cursor tunnel */
+    NATIVE_TUNNEL_TYPE_HARD_CURSOR = 1,
+    /** Low power video tunnel */
+    NATIVE_TUNNEL_TYPE_LPP = 2,
+    /** Stylus tunnel */
+    NATIVE_TUNNEL_TYPE_STYLUS = 3,
+    /** Video tunnel */
+    NATIVE_TUNNEL_TYPE_VIDEO = 4,
+    /** ANCO tunnel */
+    NATIVE_TUNNEL_TYPE_ANCO = 5,
+    /** Game tunnel */
+    NATIVE_TUNNEL_TYPE_GAME = 6,
+} NativeTunnelType;
+
 // pSurface type is OHOS::sptr<OHOS::Surface>*
 OHNativeWindow* CreateNativeWindowFromSurface(void* pSurface);
 void DestoryNativeWindow(OHNativeWindow* window);
@@ -63,6 +84,7 @@ int32_t NativeWindowSetMetaData(OHNativeWindow *window, uint32_t sequence, int32
 int32_t NativeWindowSetMetaDataSet(OHNativeWindow *window, uint32_t sequence, OHHDRMetadataKey key,
                                    int32_t size, const uint8_t *metaData);
 int32_t NativeWindowSetTunnelHandle(OHNativeWindow *window, const OHExtDataHandle *handle);
+int32_t NativeWindowSetTunnelLayerInfo(OHNativeWindow* window, NativeTunnelType tunnelType);
 int32_t GetSurfaceId(OHNativeWindow *window, uint64_t *surfaceId);
 int32_t CreateNativeWindowFromSurfaceId(uint64_t surfaceId, OHNativeWindow **window);
 int32_t NativeWindowAttachBuffer(OHNativeWindow *window, OHNativeWindowBuffer *buffer);

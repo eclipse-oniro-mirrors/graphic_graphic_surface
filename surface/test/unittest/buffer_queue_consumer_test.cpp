@@ -509,4 +509,39 @@ HWTEST_F(BufferQueueConsumerTest, GetSdrWhitePointBrightnessNull001, TestSize.Le
     sptr<BufferQueueConsumer> bqcNull = new BufferQueueConsumer(nullQueue);
     ASSERT_EQ(bqcNull->GetSdrWhitePointBrightness(), 0.0f);
 }
+
+/*
+* Function: AcquireBufferForTunnel
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call AcquireBufferForTunnel with null bufferQueue
+*                  2. request and flush buffer, call AcquireBufferForTunnel
+*                  3. check ret and acquired buffer
+*/
+HWTEST_F(BufferQueueConsumerTest, AcquireBufferForTunnel001, TestSize.Level0)
+{
+    IConsumerSurface::AcquireBufferReturnValue returnValue;
+
+    sptr<BufferQueue> nullQueue = nullptr;
+    sptr<BufferQueueConsumer> bqcNull = new BufferQueueConsumer(nullQueue);
+    ASSERT_EQ(bqcNull->AcquireBufferForTunnel(returnValue, 0, false), SURFACE_ERROR_UNKOWN);
+
+    IBufferProducer::RequestBufferReturnValue retval;
+    GSError ret = bq->RequestBuffer(requestConfig, bedata, retval);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    sptr<SyncFence> acquireFence = SyncFence::INVALID_FENCE;
+    ret = bq->FlushBuffer(retval.sequence, bedata, acquireFence, flushConfig);
+    ASSERT_EQ(ret, GSERROR_OK);
+
+    sptr<BufferQueueConsumer> bqcTunnel = new BufferQueueConsumer(bq);
+    ret = bqcTunnel->AcquireBufferForTunnel(returnValue, 0, false);
+    ASSERT_EQ(ret, GSERROR_OK);
+    ASSERT_NE(returnValue.buffer, nullptr);
+    ASSERT_EQ(returnValue.buffer->GetSeqNum(), retval.sequence);
+
+    ret = bqcTunnel->ReleaseBuffer(returnValue.buffer, returnValue.fence);
+    ASSERT_EQ(ret, GSERROR_OK);
+}
 }

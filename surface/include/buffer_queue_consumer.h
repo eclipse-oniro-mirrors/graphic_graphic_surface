@@ -28,10 +28,12 @@ public:
     BufferQueueConsumer(sptr<BufferQueue>& bufferQueue);
     virtual ~BufferQueueConsumer();
 
-    GSError AcquireBuffer(sptr<SurfaceBuffer> &buffer, sptr<SyncFence> &fence,
-                               int64_t &timestamp, std::vector<Rect> &damages, bool isLppMode = false);
-    GSError AcquireBuffer(IConsumerSurface::AcquireBufferReturnValue &returnValue, int64_t expectPresentTimestamp,
-                          bool isUsingAutoTimestamp);
+    GSError AcquireBuffer(sptr<SurfaceBuffer>& buffer, sptr<SyncFence>& fence, int64_t& timestamp,
+        std::vector<Rect>& damages, bool isLppMode = false);
+    GSError AcquireBuffer(IConsumerSurface::AcquireBufferReturnValue& returnValue, int64_t expectPresentTimestamp,
+        bool isUsingAutoTimestamp);
+    GSError AcquireBufferForTunnel(IConsumerSurface::AcquireBufferReturnValue& returnValue,
+        int64_t expectPresentTimestamp, bool isUsingAutoTimestamp);
     GSError ReleaseBuffer(sptr<SurfaceBuffer>& buffer, const sptr<SyncFence>& fence);
 
     GSError AttachBuffer(sptr<SurfaceBuffer>& buffer);

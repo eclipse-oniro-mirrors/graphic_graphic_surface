@@ -168,6 +168,11 @@ void FrameReport::SetFlushBufferSequence(uint32_t sequence)
     flushBufferSequence_.store(sequence);
 }
 
+void FrameReport::SetVsyncPeriodNs(int64_t period)
+{
+    vsyncPeriodNs_.store(period);
+}
+
 void FrameReport::SetAcquireBufferSysTime()
 {
     if (HasGameScene()) {
@@ -184,6 +189,14 @@ void FrameReport::SetAcquireBufferSeqWithUniqueId(uint64_t uniqueId, uint32_t se
             std::chrono::steady_clock::now().time_since_epoch()).count();
         acquireBufferSysTime_.store(now);
         acquireBufferSequence_.store(sequence);
+    }
+}
+
+void FrameReport::AddAcquireBufferTunnelOffset()
+{
+    int64_t vsyncPeriod = vsyncPeriodNs_.load();
+    if (acquireBufferSysTime_.load() != 0 && vsyncPeriod > 0) {
+        acquireBufferSysTime_.fetch_add(vsyncPeriod / FR_TUNNEL_ACQUIRE_OFFSET_DIVISOR);
     }
 }
 

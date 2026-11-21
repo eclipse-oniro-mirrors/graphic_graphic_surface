@@ -3524,4 +3524,45 @@ HWTEST_F(NativeWindowTest, SetAppFrameworkType_BoundaryLength001, TestSize.Level
     ASSERT_EQ(strlen(validStr), maxLen);
     ASSERT_EQ(0, strncmp(validStr, typeGet, maxLen));
 }
+
+/*
+* Function: NativeWindowSetTunnelLayerInfo
+* Type: Function
+* Rank: Important(2)
+* EnvConditions: N/A
+* CaseDescription: 1. call NativeWindowSetTunnelLayerInfo with nullptr
+*                  2. call NativeWindowSetTunnelLayerInfo with invalid magic
+*                  3. call NativeWindowSetTunnelLayerInfo with null surface
+*                  4. call NativeWindowSetTunnelLayerInfo with game tunnel type and check ret
+*/
+HWTEST_F(NativeWindowTest, SetTunnelLayerInfo001, TestSize.Level0)
+{
+    ASSERT_EQ(NativeWindowSetTunnelLayerInfo(nullptr, NATIVE_TUNNEL_TYPE_GAME), OHOS::SURFACE_ERROR_INVALID_PARAM);
+
+    sptr<OHOS::IConsumerSurface> cSurfaceTunnel = IConsumerSurface::Create();
+    sptr<IBufferConsumerListener> listener = new BufferConsumerListener();
+    cSurfaceTunnel->RegisterConsumerListener(listener);
+    sptr<OHOS::IBufferProducer> producerTunnel = cSurfaceTunnel->GetProducer();
+    sptr<OHOS::Surface> pSurfaceTunnel = Surface::CreateSurfaceAsProducer(producerTunnel);
+    NativeWindow* windowTunnel = OH_NativeWindow_CreateNativeWindow(&pSurfaceTunnel);
+    ASSERT_NE(windowTunnel, nullptr);
+
+    windowTunnel->magic = NATIVE_OBJECT_MAGIC_WINDOW_INVALID;
+    ASSERT_EQ(NativeWindowSetTunnelLayerInfo(windowTunnel, NATIVE_TUNNEL_TYPE_GAME),
+              OHOS::SURFACE_ERROR_INVALID_PARAM);
+
+    windowTunnel->magic = NATIVE_OBJECT_MAGIC_WINDOW;
+    windowTunnel->surface = nullptr;
+    ASSERT_EQ(NativeWindowSetTunnelLayerInfo(windowTunnel, NATIVE_TUNNEL_TYPE_GAME), OHOS::SURFACE_ERROR_ERROR);
+
+    windowTunnel->surface = pSurfaceTunnel;
+    ASSERT_EQ(NativeWindowSetTunnelLayerInfo(windowTunnel, NATIVE_TUNNEL_TYPE_GAME), OHOS::SURFACE_ERROR_OK);
+
+    TunnelLayerState state;
+    ASSERT_EQ(cSurfaceTunnel->GetTunnelLayerInfo(state), OHOS::GSERROR_OK);
+    ASSERT_EQ(state.tunnelLayerInfo.tunnelTypeMask, TunnelTypeMask::TUNNEL_TYPE_GAME);
+    ASSERT_EQ(state.tunnelLayerId, cSurfaceTunnel->GetUniqueId());
+
+    OH_NativeWindow_DestroyNativeWindow(windowTunnel);
+}
 }
